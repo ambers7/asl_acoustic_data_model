@@ -1,0 +1,15 @@
+*.png
+*.jpg
+*.jpeg
+*.bmp
+*.gif
+*.tif
+*.tiff
+*.npy
+
+data/
+*.pth
+*.zip
+
+*.ipynb
+*.pyc
