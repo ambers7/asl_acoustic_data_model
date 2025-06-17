@@ -1,4 +1,3 @@
-#https://docs.pytorch.org/tutorials/beginner/blitz/cifar10_tutorial.html
 import torch
 import torchvision
 import torchvision.transforms as transforms
@@ -11,25 +10,23 @@ from torch.utils.data import Dataset, DataLoader
 import glob
 import os
 import torchvision.models as models
-from math import ceil
 from add_padding import collate_various_size
 
 
 
-'''1. load npy files from a directory
-2. create a torch.utils.data.Dataset to load my npy files
-3. create a DataLoader to load the dataset in batches
-4. define a simple 1D CNN model
-5. train the model on the dataset
-6. save the trained model
+'''
+resnet model trained only on a, b, c, and d
 
 '''
 class AcousticDataset(Dataset):
         def __init__(self, data_dir, label_dict):
-            self.files = glob.glob(os.path.join(data_dir, '*.npy')) #glob: finds all files in data_dif directory that match the pattern *.npy
-            self.label_dict = label_dict #label_dict: dictionary mapping file names to labels
+            all_files = glob.glob(os.path.join(data_dir, '*.npy'))
+            self.files = [f for f in all_files if os.path.basename(f) in label_dict]
+            self.label_dict = label_dict
 
         def __len__(self):
+            # Filter files to only include those present in the label_dict
+            self.files = [f for f in self.files if os.path.basename(f) in self.label_dict]
             return len(self.files)
         
         def __getitem__(self, idx):
@@ -47,32 +44,30 @@ class AcousticDataset(Dataset):
 
             fname = os.path.basename(self.files[idx])
             label = self.label_dict[fname] #get corresponding asl letter (label) from the filename
-            return arr, label    
+            return arr, label
 
 
 if __name__ == "__main__":
-       
     '''
     create a torch.utils.data.Dataset to load npy files
     '''
     
     # create label dictionary that maps the letter to the file name 
-    train_data_dir = 'train/'
-    test_data_dir = 'test/'
+    train_data_dir = 'glasses_train_8/diff'
+    test_data_dir = 'glasses_test_repeat2/diff'
 
-    classes = ('A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J',
-           'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T',
-           'U', 'V', 'W', 'X', 'Y', 'Z')
+    classes = ('A','B','C','D') 
     class_to_idx = {letter: idx for idx, letter in enumerate(classes)}
-   
+
     def create_label_dict(data_dir):
         npy_files = glob.glob(os.path.join(data_dir, '*.npy'))
         label_dict = {}
         for file_path in npy_files:
             fname = os.path.basename(file_path)
             label = fname.split('_')[-1][0]  # Gets the first character after the last underscore
-            label_idx = class_to_idx[label]  # Convert letter to integer index
-            label_dict[fname] = label_idx
+            if label in class_to_idx: # Only include files with labels in the classes tuple
+                label_idx = class_to_idx[label]  # Convert letter to integer index
+                label_dict[fname] = label_idx
         return label_dict
         
     train_label_dict = create_label_dict(train_data_dir) #create a dictionary mapping file names to labels (asl letters)
@@ -80,14 +75,11 @@ if __name__ == "__main__":
 
     trainset = AcousticDataset(train_data_dir, train_label_dict) #create an instance of the AcousticDataset class, passing in the data directory and label dictionary
     trainloader = DataLoader(trainset, batch_size=4, shuffle=True, num_workers=2, collate_fn=collate_various_size) 
-    
+   
     testset = AcousticDataset(test_data_dir, test_label_dict) 
     testloader = DataLoader(testset, batch_size=4, shuffle=False, num_workers=2, collate_fn=collate_various_size)
 
-    print("Train set size:", len(trainset))
-    print("Batch size:", trainloader.batch_size)
-    print("Batches per epoch:", len(trainloader))
-
+     
     net = models.resnet18(num_classes=26)
     net.conv1 = nn.Conv2d(4, 64, kernel_size=3, stride=1, padding=1, bias=False)  # Adjust for CIFAR10
     net.maxpool = nn.Identity()  # Remove maxpool for small images
@@ -109,15 +101,12 @@ if __name__ == "__main__":
             outputs = net(inputs) #forward pass: inputs (mini-batch of images) is fed into net (the network) -> outputs (logits for each image in the patch)
             loss = criterion(outputs, labels) #calculates loss; criterion (CrossEntropyLoss) compares the networks outputs w/ the true labels to quantify how well the network is performing
             loss.backward() #backward pass: pytorch computes the gradients of loss w/ respect to all networks parameters that require gradients
-            #the gradients indicate hwo much each parameter needs to reduce the loss
-            '''gradient (calclus): direction and rate of sttepest increase of loss function w/ respect to inputs (the model's parameters- weights and biases)
-            '''
             optimizer.step() #updates the networks parameters: uses gradients computed during the backward pass to adjust the weights and biases of the network in a direction that minimizes the loss
 
             # print statistics
             running_loss += loss.item() #accumulates the loss for the current mini-batch
-            if i % 10 == 9:    
-                print(f'[{epoch + 1}, {i + 1:5d}] loss: {running_loss / 10:.3f}') #print current epoch number and current mini-batch, and average loss over last 2000 batches rounded to 3 decimal places
+            if i % 10 == 9:   
+                print(f'[{epoch + 1}, {i + 1:5d}] loss: {running_loss / 2000:.3f}') #print current epoch number and current mini-batch, and average loss over last 2000 batches rounded to 3 decimal places
                 running_loss = 0.0 #resets running_loss after printing statistics for last 2000 lines
 
     print('Finished Training')
@@ -126,36 +115,9 @@ if __name__ == "__main__":
     PATH = './cifar_net.pth'
     torch.save(net.state_dict(), PATH)
 
-    # #test model:
-    # dataiter = iter(testloader)
-    # images, labels = next(dataiter)
-
-
-    # #display an image form the test set
-    # def imshow(img):
-    #     # img = img / 2 + 0.5     # unnormalize (scale pixel values back to [0,1])
-    #     npimg = img.numpy() #converts pytorch tensor image to a numpy array (needed for matplotlib)
-    #     plt.imshow(np.transpose(npimg, (1, 2, 0))) #displays the image, transpose reorders dimensions of the array from color_channels, height, width to height, width, color_channels (needed fo rmatplotlib)
-    #     plt.show()
-
-    # # print images
-    # imshow(torchvision.utils.make_grid(images))
-    # print('GroundTruth: ', ' '.join(f'{classes[labels[j]]:5s}' for j in range(4)))
-
-    # #load back into saved model (not necessary)
-    # # net = Net()
-    # # net.load_state_dict(torch.load(PATH, weights_only=True)) #weights_only = True: only loading model's learned parameters and not other potential metadat
-    # #takes the loaded state dictionary (containing the saved weights and biases) and loads them into the corresponding layers of the net instance
-
-    # #see what the model thinks the above images are
-    # outputs = net(images)
-
-    # #outputs are the energies for the 10 classes- the higher the energy, the more the network thinks the image is of that class
-    # # -> get the index of the highest energy
-    # _, predicted = torch.max(outputs, 1) #_ ignores max value itself- we only need the index
-
-    # print('Predicted: ', ' '.join(f'{classes[predicted[j]]:5s}'
-    #                             for j in range(4)))
+    #test model:
+    dataiter = iter(testloader)
+    images, labels = next(dataiter)
 
     correct = 0
     total = 0
