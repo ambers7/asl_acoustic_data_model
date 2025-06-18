@@ -15,7 +15,6 @@ from math import ceil
 from add_padding import collate_various_size
 
 
-
 '''1. load npy files from a directory
 2. create a torch.utils.data.Dataset to load my npy files
 3. create a DataLoader to load the dataset in batches
@@ -87,9 +86,13 @@ if __name__ == "__main__":
     print("Batch size:", trainloader.batch_size)
     print("Batches per epoch:", len(trainloader))
 
-    net = models.resnet18(num_classes=26)
-    net.conv1 = nn.Conv2d(4, 64, kernel_size=3, stride=1, padding=1, bias=False)  # Adjust for CIFAR10
-    net.maxpool = nn.Identity()  # Remove maxpool for small images
+    # net = models.resnet18(num_classes=26)
+    # net.conv1 = nn.Conv2d(4, 64, kernel_size=3, stride=1, padding=1, bias=False) 
+    # net.maxpool = nn.Identity()  # Remove maxpool for small images
+
+    net = models.vgg16(num_classes=26) 
+    net.features[0] = nn.Conv2d(4, 64, kernel_size=3, stride=1, padding=1, bias=False) #change first convolutional layer to accept 4 channels
+    net.classifier[6] = nn.Linear(4096, 26) #change the last fully connected layer to output 26 classes 
 
     criterion = nn.CrossEntropyLoss() #defines the loss function- want to minimize this loss function
     optimizer = optim.SGD(net.parameters(), lr=0.001, momentum=0.9) #optimizer: SGD (Stochastic gradient descent); lr: learning rate; momentum: accelerates SGD in relevant direction
@@ -122,7 +125,7 @@ if __name__ == "__main__":
     print('Finished Training')
 
     #save trained model
-    PATH = './acoustic_resnet.pth'
+    PATH = './acoustic_vgg16.pth'
     torch.save(net.state_dict(), PATH)
 
     correct = 0
