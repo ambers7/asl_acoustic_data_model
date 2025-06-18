@@ -24,7 +24,8 @@ from add_padding import collate_various_size
 '''
 class AcousticDataset(Dataset):
         def __init__(self, data_dir, label_dict):
-            self.files = glob.glob(os.path.join(data_dir, '*.npy')) #glob: finds all files in data_dif directory that match the pattern *.npy
+            all_files = glob.glob(os.path.join(data_dir, '*.npy')) #glob: finds all files in data_dif directory that match the pattern *.npy
+            self.files = [f for f in all_files if os.path.basename(f) in label_dict]  # Only keep files with valid labels
             self.label_dict = label_dict #label_dict: dictionary mapping file names to labels
 
         def __len__(self):
@@ -55,12 +56,10 @@ if __name__ == "__main__":
     '''
     
     # create label dictionary that maps the letter to the file name 
-    train_data_dir = 'train/'
-    test_data_dir = 'test/'
+    train_data_dir = '../train/'
+    test_data_dir = '../test/'
 
-    classes = ('A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J',
-           'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T',
-           'U', 'V', 'W', 'X', 'Y', 'Z')
+    classes = ('J','P','X','Z')
     class_to_idx = {letter: idx for idx, letter in enumerate(classes)}
    
     def create_label_dict(data_dir):
@@ -69,6 +68,9 @@ if __name__ == "__main__":
         for file_path in npy_files:
             fname = os.path.basename(file_path)
             label = fname.split('_')[-1][0]  # Gets the first character after the last underscore
+            if label not in class_to_idx:
+                # print(f"Skipping file {fname}: label '{label}' not in classes {classes}")
+                continue
             label_idx = class_to_idx[label]  # Convert letter to integer index
             label_dict[fname] = label_idx
         return label_dict
@@ -90,9 +92,9 @@ if __name__ == "__main__":
     # net.conv1 = nn.Conv2d(4, 64, kernel_size=3, stride=1, padding=1, bias=False) 
     # net.maxpool = nn.Identity()  # Remove maxpool for small images
 
-    net = models.vgg16(num_classes=26) 
+    net = models.vgg16(num_classes=4) 
     net.features[0] = nn.Conv2d(4, 64, kernel_size=3, stride=1, padding=1, bias=False) #change first convolutional layer to accept 4 channels
-    net.classifier[6] = nn.Linear(4096, 26) #change the last fully connected layer to output 26 classes 
+    net.classifier[6] = nn.Linear(4096, 4) #change the last fully connected layer to output 26 classes 
 
     criterion = nn.CrossEntropyLoss() #defines the loss function- want to minimize this loss function
     optimizer = optim.SGD(net.parameters(), lr=0.001, momentum=0.9) #optimizer: SGD (Stochastic gradient descent); lr: learning rate; momentum: accelerates SGD in relevant direction
@@ -125,7 +127,7 @@ if __name__ == "__main__":
     print('Finished Training')
 
     #save trained model
-    PATH = './acoustic_vgg16.pth'
+    PATH = './jpxz_vgg16.pth'
     torch.save(net.state_dict(), PATH)
 
     correct = 0
