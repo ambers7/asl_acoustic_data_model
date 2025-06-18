@@ -185,6 +185,7 @@ if __name__ == "__main__":
             # collect the correct predictions for each class
             for label, prediction in zip(labels, predictions): #loop thru true labels and predicted labels for each image w/in current batch
             #zip: pairs up corresponding true and predicted labels
+                print(f"True: {classes[label]}, Predicted: {classes[prediction]}")
                 if label == prediction:
                     correct_pred[classes[label]] += 1 #if prediction correct increment count in correct_pred
                 total_pred[classes[label]] += 1 #increments total count, regardless of whether prediction was correct or not2qq
