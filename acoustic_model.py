@@ -22,7 +22,6 @@ from add_padding import collate_various_size
 4. define a simple 1D CNN model
 5. train the model on the dataset
 6. save the trained model
-
 '''
 class AcousticDataset(Dataset):
         def __init__(self, data_dir, label_dict):
@@ -123,75 +122,32 @@ if __name__ == "__main__":
     print('Finished Training')
 
     #save trained model
-    PATH = './cifar_net.pth'
+    PATH = './acoustic_resnet.pth'
     torch.save(net.state_dict(), PATH)
-
-    # #test model:
-    # dataiter = iter(testloader)
-    # images, labels = next(dataiter)
-
-
-    # #display an image form the test set
-    # def imshow(img):
-    #     # img = img / 2 + 0.5     # unnormalize (scale pixel values back to [0,1])
-    #     npimg = img.numpy() #converts pytorch tensor image to a numpy array (needed for matplotlib)
-    #     plt.imshow(np.transpose(npimg, (1, 2, 0))) #displays the image, transpose reorders dimensions of the array from color_channels, height, width to height, width, color_channels (needed fo rmatplotlib)
-    #     plt.show()
-
-    # # print images
-    # imshow(torchvision.utils.make_grid(images))
-    # print('GroundTruth: ', ' '.join(f'{classes[labels[j]]:5s}' for j in range(4)))
-
-    # #load back into saved model (not necessary)
-    # # net = Net()
-    # # net.load_state_dict(torch.load(PATH, weights_only=True)) #weights_only = True: only loading model's learned parameters and not other potential metadat
-    # #takes the loaded state dictionary (containing the saved weights and biases) and loads them into the corresponding layers of the net instance
-
-    # #see what the model thinks the above images are
-    # outputs = net(images)
-
-    # #outputs are the energies for the 10 classes- the higher the energy, the more the network thinks the image is of that class
-    # # -> get the index of the highest energy
-    # _, predicted = torch.max(outputs, 1) #_ ignores max value itself- we only need the index
-
-    # print('Predicted: ', ' '.join(f'{classes[predicted[j]]:5s}'
-    #                             for j in range(4)))
 
     correct = 0
     total = 0
-    # since we're not training, we don't need to calculate the gradients for our outputs
-    with torch.no_grad(): #disabling gradient calculation saves memory and speeds up computations
-        for data in testloader:
-            images, labels = data
-            # calculate outputs by running images through the network
-            outputs = net(images)
-            # the class with the highest energy is what we choose as prediction
-            _, predicted = torch.max(outputs, 1)
-            total += labels.size(0)
-            correct += (predicted == labels).sum().item() #calculates # of correct predictions in the current batch and adds it to the correct count
-
-    print(f'Accuracy of the network on the {total} test images: {100 * correct // total} %')
-
-    # prepare to count predictions for each class
     correct_pred = {classname: 0 for classname in classes}
     total_pred = {classname: 0 for classname in classes}
 
-    # again no gradients needed
-    with torch.no_grad():
+    with torch.no_grad():  # since we're not training, we don't need to calculate the gradients for our outputs
         for data in testloader:
             images, labels = data
-            outputs = net(images)
-            _, predictions = torch.max(outputs, 1)
-            # collect the correct predictions for each class
-            for label, prediction in zip(labels, predictions): #loop thru true labels and predicted labels for each image w/in current batch
+            outputs = net(images) # calculate outputs by running images through the network
+            _, predicted = torch.max(outputs, 1) # the class with the highest energy is what we choose as prediction
+            
+            total += labels.size(0)
+            correct += (predicted == labels).sum().item() #calculates # of correct predictions in the current batch and adds it to the correct count
+            
+            for label, prediction in zip(labels, predicted): #loop thru true labels and predicted labels for each image w/in current batch
             #zip: pairs up corresponding true and predicted labels
                 print(f"True: {classes[label]}, Predicted: {classes[prediction]}")
                 if label == prediction:
                     correct_pred[classes[label]] += 1 #if prediction correct increment count in correct_pred
                 total_pred[classes[label]] += 1 #increments total count, regardless of whether prediction was correct or not2qq
 
+    print(f'Accuracy of the network on the {total} test images: {100 * correct // total} %')
 
-    # print accuracy for each class
     for classname, correct_count in correct_pred.items():
         accuracy = 100 * float(correct_count) / total_pred[classname]
         print(f'Accuracy for class: {classname:5s} is {accuracy:.1f} %')
