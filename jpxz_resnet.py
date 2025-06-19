@@ -39,6 +39,20 @@ class AcousticDataset(Dataset):
             arr = arr.astype(np.float32)
             arr = (arr - arr.min()) / (arr.max() - arr.min() + 1e-8)  # Normalize to [0, 1]
     
+            #normalize data
+            
+            # for j in range(0, padded_input.shape[0]):
+            #     padded_input_tmp = padded_input[j]
+                #print(padded_input_tmp.shape)
+            for c in range(arr.shape[0]):
+                # instance-level norm
+                mu, sigma = np.mean(arr[c]), np.std(arr[c])
+                #print( mu, sigma)
+                arr[c] = (arr[c] - mu) / sigma
+            arr = np.nan_to_num(arr, nan=0.0, posinf=0.0, neginf=0.0)
+                # padded_input_list.append(padded_input_tmp)
+                #print(j, padded_input_tmp.shape)
+            # padded_input_fn = np.array(padded_input_list)
 
             # prepares data for 1D cnn, each row is a feature vector of length 4, and there are 600*472 such vectors
             arr = torch.tensor(arr, dtype=torch.float32)
@@ -46,7 +60,7 @@ class AcousticDataset(Dataset):
 
             fname = os.path.basename(self.files[idx])
             label = self.label_dict[fname] #get corresponding asl letter (label) from the filename
-            return arr, label    
+            return arr, label       
 
 
 if __name__ == "__main__":
