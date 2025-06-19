@@ -34,10 +34,14 @@ class AcousticDataset(Dataset):
             arr = np.load(self.files[idx])  # shape: (4, 600, 472)
             # arr = arr.reshape(4, -1).T      # shape: (600*472, 4) for 1D CNN
 
-            #normalize the data to [0, 1]
-            arr = arr.astype(np.float32)
-            arr = (arr - arr.min()) / (arr.max() - arr.min() + 1e-8)  # Normalize to [0, 1]
-    
+            #normalize data
+            
+            for c in range(arr.shape[0]):
+                # instance-level norm
+                mu, sigma = np.mean(arr[c]), np.std(arr[c])
+                #print( mu, sigma)
+                arr[c] = (arr[c] - mu) / sigma
+            arr = np.nan_to_num(arr, nan=0.0, posinf=0.0, neginf=0.0)
 
             # prepares data for 1D cnn, each row is a feature vector of length 4, and there are 600*472 such vectors
             arr = torch.tensor(arr, dtype=torch.float32)
@@ -97,7 +101,7 @@ if __name__ == "__main__":
     criterion = nn.CrossEntropyLoss() #defines the loss function- want to minimize this loss function
     optimizer = optim.SGD(net.parameters(), lr=0.001, momentum=0.9) #optimizer: SGD (Stochastic gradient descent); lr: learning rate; momentum: accelerates SGD in relevant direction
 
-    for epoch in range(10):  # loop over the dataset multiple times: 2 epochs (epoch: a pass over the entire dataset)
+    for epoch in range(2):  # loop over the dataset multiple times: 2 epochs (epoch: a pass over the entire dataset)
 
         running_loss = 0.0 #keeps track of loss during each mini-batch
         for i, data in enumerate(trainloader, 0): #enumeration starts from 0
