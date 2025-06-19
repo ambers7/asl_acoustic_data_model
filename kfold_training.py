@@ -15,11 +15,21 @@ from add_padding import collate_various_size
 import random
 import pickle
 from acoustic_model_resnet import save_cm_figure
-from acoustic_model_resnet import AcousticDataset
 from sklearn.model_selection import KFold
 
 all_data_dir = '../combined_data/'
 all_files = glob.glob(os.path.join(all_data_dir, '*.npy'))
+
+# Count files per letter
+letter_counts = {}
+for file_path in all_files:
+    fname = os.path.basename(file_path)
+    letter = fname.split('_')[-1][0]  # Gets the first character after the last underscore
+    letter_counts[letter] = letter_counts.get(letter, 0) + 1
+
+print("\nFiles per letter:")
+for letter in sorted(letter_counts.keys()):
+    print(f"Letter {letter}: {letter_counts[letter]} files")
 
 classes = ('A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J',
            'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T',
@@ -33,6 +43,7 @@ for file_path in all_files:
     label_idx = class_to_idx[label]
     train_data.append((file_path, label_idx))
 
+print(f"Total dataset size: {len(train_data)}")
 
 kf = KFold(n_splits=5, shuffle=True, random_state=42)
 
@@ -42,15 +53,60 @@ test_data_folds = []
 for train_index, test_index in kf.split(train_data):
     train_data_folds.append([train_data[i] for i in train_index])
     test_data_folds.append([train_data[i] for i in test_index])
+    print(f"Fold split sizes - Train: {len(train_data_folds[-1])}, Test: {len(test_data_folds[-1])}")
+
 
 #train ith model: train_data_folds[i] and test_data_folds[i]
 fold = 0
 
+class KFoldAcousticDataset(Dataset):
+        def __init__(self, file_label_pairs, is_train=False):
+            self.file_label_pairs = file_label_pairs
+            self.is_train = is_train
+
+
+        def __len__(self):
+            return len(self.file_label_pairs)
+        
+        def __getitem__(self, idx):
+            file_path, label = self.file_label_pairs[idx]
+            arr = np.load(file_path)
+            arr = arr.astype(np.float32)
+        
+            
+            if self.is_train:
+                #apply masking (set random values to zero)
+                if (random.random() > 0.2):
+                    mask_width = random.randint(10, 20)
+                    rand_start = random.randint(0, arr.shape[1] - mask_width)
+                    arr[:, rand_start: rand_start + mask_width, :] = 0.0
+                #print('mask')
+
+                #add noise 
+                if random.random() > 0.2:
+                    noise_arr = np.random.random(arr.shape).astype(np.float32) * 0.1 + 0.95
+                    arr *= noise_arr
+                    #print('noise: ', noise_arr.shape, noise_imu.shape)
+                
+            #normalize data
+            for c in range(arr.shape[0]):
+                # instance-level norm
+                mu, sigma = np.mean(arr[c]), np.std(arr[c])
+                #print( mu, sigma)
+                arr[c] = (arr[c] - mu) / sigma
+            arr = np.nan_to_num(arr, nan=0.0, posinf=0.0, neginf=0.0)
+
+            # prepares data for 1D cnn, each row is a feature vector of length 4, and there are 600*472 such vectors
+            arr = torch.tensor(arr, dtype=torch.float32)
+            #convert reshaped numpy array into a pytorch tensor
+            
+            return arr, label    
+
 if __name__ == "__main__":
-    trainset = AcousticDataset(train_data_folds[i], is_train=True) #create an instance of the AcousticDataset class, passing in the data directory and label dictionary
+    trainset = KFoldAcousticDataset(train_data_folds[fold], is_train=True) #create an instance of the AcousticDataset class, passing in the data directory and label dictionary
     trainloader = DataLoader(trainset, batch_size=4, shuffle=True, num_workers=2, collate_fn=collate_various_size) 
     
-    testset = AcousticDataset(test_data_folds[i]) 
+    testset = KFoldAcousticDataset(test_data_folds[fold]) 
     testloader = DataLoader(testset, batch_size=4, shuffle=False, num_workers=2, collate_fn=collate_various_size)
 
     print("Train set size:", len(trainset))
