@@ -14,6 +14,7 @@ import torchvision.models as models
 from math import ceil
 from add_padding import collate_various_size
 import random
+import pickle
 
 
 '''1. load npy files from a directory
@@ -67,6 +68,28 @@ class AcousticDataset(Dataset):
             label = self.label_dict[fname] #get corresponding asl letter (label) from the filename
             return arr, label    
 
+def save_cm_figure(true_label,predict_label, best_save_path, acc, lst): 
+    true_labels= [label_dic_reverse[i] for i in  true_label]
+    #predicted_labels = df["Predicted Label"].tolist()
+    predicted_labels= [label_dic_reverse[i] for i in predict_label]
+    # Get unique class names and sort them (ensures correct label order)
+    unique_classes = sorted(set(true_labels) | set(predicted_labels))
+    # Compute confusion matrix with string labels
+    cm = confusion_matrix(true_labels, predicted_labels, labels=unique_classes)
+    cm_normalized = cm.astype('float') / cm.sum(axis=1, keepdims=True)
+    # Plot confusion matrix
+    plt.figure(figsize=(12, 8))
+    sns.heatmap(cm_normalized, annot=True, fmt=".2f", cmap="Blues", linewidths=0.5)
+    # Keep the label order in figure
+    plt.xticks(ticks=np.arange(len(lst)) + 0.5, labels=lst, rotation=90)
+    plt.yticks(ticks=np.arange(len(lst)) + 0.5, labels=lst, rotation=0)
+
+    plt.xlabel("Predicted Label")
+    plt.ylabel("True Label")
+    plt.title("Confusion Matrix - Best Accuracy : %.3f"%acc + " %")
+    plt.xticks(rotation=45)  # Rotate class labels for better visibility
+    plt.yticks(rotation=0)
+    plt.savefig(best_save_path+"confusion_matrix.png", dpi=300, bbox_inches="tight")  # Saves as a high-quality PNG
 
 if __name__ == "__main__":
        
@@ -96,7 +119,7 @@ if __name__ == "__main__":
     train_label_dict = create_label_dict(train_data_dir) #create a dictionary mapping file names to labels (asl letters)
     test_label_dict = create_label_dict(test_data_dir) #create a dictionary mapping file names to labels for the test set
 
-    trainset = AcousticDataset(train_data_dir, train_label_dict) #create an instance of the AcousticDataset class, passing in the data directory and label dictionary
+    trainset = AcousticDataset(train_data_dir, train_label_dict, is_train=True) #create an instance of the AcousticDataset class, passing in the data directory and label dictionary
     trainloader = DataLoader(trainset, batch_size=4, shuffle=True, num_workers=2, collate_fn=collate_various_size) 
     
     testset = AcousticDataset(test_data_dir, test_label_dict) 
@@ -153,17 +176,25 @@ if __name__ == "__main__":
     correct_pred = {classname: 0 for classname in classes}
     total_pred = {classname: 0 for classname in classes}
 
+    ground_truth = []
+    predictions = []
+
     with torch.no_grad():  # since we're not training, we don't need to calculate the gradients for our outputs
         for data in testloader:
             images, labels = data
             outputs = net(images) # calculate outputs by running images through the network
             _, predicted = torch.max(outputs, 1) # the class with the highest energy is what we choose as prediction
-            
+
+            #for confusion matrix
+            ground_truth.extend(labels.cpu().numpy())
+            predictions.extend(predicted.cpu().numpy())
+
+            #for total correct predictions
             total += labels.size(0)
             correct += (predicted == labels).sum().item() #calculates # of correct predictions in the current batch and adds it to the correct count
             
+            #for letter accuracy
             for label, prediction in zip(labels, predicted): #loop thru true labels and predicted labels for each image w/in current batch
-            #zip: pairs up corresponding true and predicted labels
                 print(f"True: {classes[label]}, Predicted: {classes[prediction]}")
                 if label == prediction:
                     correct_pred[classes[label]] += 1 #if prediction correct increment count in correct_pred
@@ -174,3 +205,13 @@ if __name__ == "__main__":
     for classname, correct_count in correct_pred.items():
         accuracy = 100 * float(correct_count) / total_pred[classname]
         print(f'Accuracy for class: {classname:5s} is {accuracy:.1f} %')
+
+    #save confusion matrix
+    save_cm_figure(ground_truth, predictions, classes, 'cms/acoustic_cnn_cm.png')
+
+    # save ground_truth and predictions so can get aggregate confusion matrix later
+    run = 1  #current run of training the model
+    with open(f'ground_truth_run{run}.pkl', 'wb') as f:
+        pickle.dump(ground_truth, f)
+    with open(f'predictions_run{run}.pkl', 'wb') as f:
+        pickle.dump(predictions, f)
