@@ -97,7 +97,7 @@ if __name__ == "__main__":
     criterion = nn.CrossEntropyLoss() #defines the loss function- want to minimize this loss function
     optimizer = optim.SGD(net.parameters(), lr=0.001, momentum=0.9) #optimizer: SGD (Stochastic gradient descent); lr: learning rate; momentum: accelerates SGD in relevant direction
 
-    for epoch in range(5):  # loop over the dataset multiple times: 2 epochs (epoch: a pass over the entire dataset)
+    for epoch in range(2):  # loop over the dataset multiple times: 2 epochs (epoch: a pass over the entire dataset)
 
         running_loss = 0.0 #keeps track of loss during each mini-batch
         for i, data in enumerate(trainloader, 0): #enumeration starts from 0
