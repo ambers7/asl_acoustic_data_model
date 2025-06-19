@@ -13,6 +13,7 @@ import os
 import torchvision.models as models
 from math import ceil
 from add_padding import collate_various_size
+import random
 
 
 '''1. load npy files from a directory
@@ -23,19 +24,34 @@ from add_padding import collate_various_size
 6. save the trained model
 '''
 class AcousticDataset(Dataset):
-        def __init__(self, data_dir, label_dict):
+        def __init__(self, data_dir, label_dict, is_train=False):
             self.files = glob.glob(os.path.join(data_dir, '*.npy')) #glob: finds all files in data_dif directory that match the pattern *.npy
             self.label_dict = label_dict #label_dict: dictionary mapping file names to labels
+            self.is_train = is_train
 
         def __len__(self):
             return len(self.files)
         
         def __getitem__(self, idx):
             arr = np.load(self.files[idx])  # shape: (4, 600, 472)
-            # arr = arr.reshape(4, -1).T      # shape: (600*472, 4) for 1D CNN
 
-            #normalize data
+            arr = arr.astype(np.float32)
             
+            if self.is_train:
+                #apply masking (set random values to zero)
+                if (random.random() > 0.2):
+                    mask_width = random.randint(10, 20)
+                    rand_start = random.randint(0, arr.shape[1] - mask_width)
+                    arr[:, rand_start: rand_start + mask_width, :] = 0.0
+                #print('mask')
+
+                #add noise 
+                if random.random() > 0.2:
+                    noise_arr = np.random.random(arr.shape).astype(np.float32) * 0.1 + 0.95
+                    arr *= noise_arr
+                    #print('noise: ', noise_arr.shape, noise_imu.shape)
+                
+            #normalize data
             for c in range(arr.shape[0]):
                 # instance-level norm
                 mu, sigma = np.mean(arr[c]), np.std(arr[c])
