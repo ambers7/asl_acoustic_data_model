@@ -168,7 +168,7 @@ if __name__ == "__main__":
     print('Finished Training')
 
     #save trained model
-    PATH = './acoustic_vgg16.pth'
+    PATH = './resnet_data_augmented.pth'
     torch.save(net.state_dict(), PATH)
 
     correct = 0
@@ -206,11 +206,12 @@ if __name__ == "__main__":
         accuracy = 100 * float(correct_count) / total_pred[classname]
         print(f'Accuracy for class: {classname:5s} is {accuracy:.1f} %')
 
+    run = 0  #current run of training the model
+    
     #save confusion matrix
-    save_cm_figure(ground_truth, predictions, classes, 'cms/acoustic_cnn_cm.png')
+    save_cm_figure(ground_truth, predictions, classes, f'cms/acoustic_cnn_cm_{run}.png')
 
     # save ground_truth and predictions so can get aggregate confusion matrix later
-    run = 1  #current run of training the model
     with open(f'ground_truth_run{run}.pkl', 'wb') as f:
         pickle.dump(ground_truth, f)
     with open(f'predictions_run{run}.pkl', 'wb') as f:
