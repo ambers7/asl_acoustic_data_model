@@ -15,6 +15,8 @@ from math import ceil
 from add_padding import collate_various_size
 import random
 import pickle
+from sklearn.metrics import confusion_matrix
+import seaborn as sns
 
 
 '''1. load npy files from a directory
@@ -97,6 +99,9 @@ if __name__ == "__main__":
     create a torch.utils.data.Dataset to load npy files
     '''
     
+
+    run = 0  #current run of training the model
+    
     # create label dictionary that maps the letter to the file name 
     train_data_dir = '../train/'
     test_data_dir = '../test/'
@@ -105,6 +110,7 @@ if __name__ == "__main__":
            'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T',
            'U', 'V', 'W', 'X', 'Y', 'Z')
     class_to_idx = {letter: idx for idx, letter in enumerate(classes)}
+    label_dic_reverse = {idx: letter for idx, letter in enumerate(classes)}  # Reverse mapping for confusion matrix
    
     def create_label_dict(data_dir):
         npy_files = glob.glob(os.path.join(data_dir, '*.npy'))
@@ -168,7 +174,7 @@ if __name__ == "__main__":
     print('Finished Training')
 
     #save trained model
-    PATH = './resnet_data_augmented.pth'
+    PATH = f'./resnet_data_augmented_{run}.pth'
     torch.save(net.state_dict(), PATH)
 
     correct = 0
@@ -205,11 +211,10 @@ if __name__ == "__main__":
     for classname, correct_count in correct_pred.items():
         accuracy = 100 * float(correct_count) / total_pred[classname]
         print(f'Accuracy for class: {classname:5s} is {accuracy:.1f} %')
-
-    run = 0  #current run of training the model
     
     #save confusion matrix
-    save_cm_figure(ground_truth, predictions, classes, f'cms/acoustic_cnn_cm_{run}.png')
+    accuracy = 100 * correct / total  # Calculate accuracy as a float
+    save_cm_figure(ground_truth, predictions, f'cms/acoustic_cnn_cm_{run}.png', accuracy, classes)
 
     # save ground_truth and predictions so can get aggregate confusion matrix later
     with open(f'ground_truth_run{run}.pkl', 'wb') as f:

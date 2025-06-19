@@ -16,25 +16,18 @@ import random
 import pickle
 from acoustic_model_resnet import save_cm_figure
 from sklearn.model_selection import KFold
+from sklearn.metrics import confusion_matrix
+import seaborn as sns
 
 all_data_dir = '../combined_data/'
 all_files = glob.glob(os.path.join(all_data_dir, '*.npy'))
 
-# Count files per letter
-letter_counts = {}
-for file_path in all_files:
-    fname = os.path.basename(file_path)
-    letter = fname.split('_')[-1][0]  # Gets the first character after the last underscore
-    letter_counts[letter] = letter_counts.get(letter, 0) + 1
-
-print("\nFiles per letter:")
-for letter in sorted(letter_counts.keys()):
-    print(f"Letter {letter}: {letter_counts[letter]} files")
 
 classes = ('A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J',
            'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T',
            'U', 'V', 'W', 'X', 'Y', 'Z')
 class_to_idx = {letter: idx for idx, letter in enumerate(classes)}
+label_dic_reverse = {idx: letter for idx, letter in enumerate(classes)}  # Reverse mapping for confusion matrix
 
 train_data = []
 for file_path in all_files:
@@ -43,7 +36,7 @@ for file_path in all_files:
     label_idx = class_to_idx[label]
     train_data.append((file_path, label_idx))
 
-print(f"Total dataset size: {len(train_data)}")
+# print(f"Total dataset size: {len(train_data)}")
 
 kf = KFold(n_splits=5, shuffle=True, random_state=42)
 
@@ -53,7 +46,7 @@ test_data_folds = []
 for train_index, test_index in kf.split(train_data):
     train_data_folds.append([train_data[i] for i in train_index])
     test_data_folds.append([train_data[i] for i in test_index])
-    print(f"Fold split sizes - Train: {len(train_data_folds[-1])}, Test: {len(test_data_folds[-1])}")
+    # print(f"Fold split sizes - Train: {len(train_data_folds[-1])}, Test: {len(test_data_folds[-1])}")
 
 
 #train ith model: train_data_folds[i] and test_data_folds[i]
@@ -188,7 +181,8 @@ if __name__ == "__main__":
     run = fold+1  #current run of training the model, +1 since non kfold model is 0
     
     #save confusion matrix
-    save_cm_figure(ground_truth, predictions, classes, f'cms/acoustic_cnn_cm_{run}.png')
+    accuracy = 100 * correct / total  # Calculate accuracy as a float
+    save_cm_figure(ground_truth, predictions, f'cms/acoustic_cnn_cm_{run}.png', accuracy, classes)
 
     # save ground_truth and predictions so can get aggregate confusion matrix later
     with open(f'ground_truth_run{run}.pkl', 'wb') as f:
