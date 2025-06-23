@@ -3,29 +3,46 @@ import numpy as np
 import torch
 from torch.utils.data import Dataset, DataLoader
 from math import ceil
-'''adds padding to end'''
-def collate_various_size_end(batch):
-    # print("collate_various_size1111")
-    data_list_arr = [x[0] for x in batch]
-    target = [x[1] for x in batch]
-    # Find max height and max time length
-    max_height = max([x.shape[1] for x in data_list_arr])
-    max_time = max([x.shape[2] for x in data_list_arr])
-    window_size = 10
-    padded_height = ceil(max_height / window_size) * window_size
-    padded_time = ceil(max_time / window_size) * window_size
 
-    data_arr = np.zeros((len(batch), data_list_arr[0].shape[0], padded_height, padded_time), dtype=np.float32)
-    for i, arr in enumerate(data_list_arr):
-        h, t = arr.shape[1], arr.shape[2]
-        # change padding to the end
-        start_h = 0
-        start_t = 0
-        data_arr[i, :, start_h:start_h + h, start_t:start_t + t] = arr.numpy() if isinstance(arr, torch.Tensor) else arr
+'''adds padding to beginning and end of max, used in 1dcnn'''
+def get_global_max_shape(train_data):
+    max_height = 0
+    max_time = 0
+    for file_path, _ in train_data:
+        arr = np.load(file_path)
+        # print(f"{file_path} shape: {arr.shape}")
+        max_height = max(max_height, arr.shape[1])
+        max_time = max(max_time, arr.shape[2])
+    # print(f"Global max shape: height={max_height}, time={max_time}")
+    return max_height, max_time
 
-    return torch.tensor(data_arr, dtype=torch.float32), torch.tensor(target)
 
-'''added padding to beginning adn end (of random sizes) '''
+def make_collate_various_size(fixed_height, fixed_time):
+    def collate_fn(batch):
+        data_list_arr = [x[0] for x in batch]
+        target = [x[1] for x in batch]
+        window_size = 10
+        padded_height = ceil(fixed_height / window_size) * window_size
+        padded_time = ceil(fixed_time / window_size) * window_size
+
+        # print(f"Batch size: {len(batch)}")
+        # for i, arr in enumerate(data_list_arr):
+        #     print(f"Sample {i} shape: {arr.shape}")
+
+        data_arr = np.zeros((len(batch), data_list_arr[0].shape[0], padded_height, padded_time), dtype=np.float32)
+        for i, arr in enumerate(data_list_arr):
+            h, t = arr.shape[1], arr.shape[2]
+            pad_h = padded_height - h
+            pad_t = padded_time - t
+            # Pad at top-left (could be randomized if needed)
+            start_h = pad_h // 2
+            start_t = pad_t // 2
+            data_arr[i, :, start_h:start_h + h, start_t:start_t + t] = arr.numpy() if isinstance(arr, torch.Tensor) else arr
+
+        return torch.tensor(data_arr, dtype=torch.float32), torch.tensor(target)
+    return collate_fn
+
+'''added padding to beginning adn end (of random sizes), used in kfold and acoustic_resnet '''
 def collate_various_size(batch):
     # print("collate_various_size1111")
     data_list_arr = [x[0] for x in batch]
@@ -49,6 +66,29 @@ def collate_various_size(batch):
 
     return torch.tensor(data_arr, dtype=torch.float32), torch.tensor(target)
 
+
+'''adds padding to end (not used)'''
+def collate_various_size_end(batch):
+    # print("collate_various_size1111")
+    data_list_arr = [x[0] for x in batch]
+    target = [x[1] for x in batch]
+    # Find max height and max time length
+    max_height = max([x.shape[1] for x in data_list_arr])
+    max_time = max([x.shape[2] for x in data_list_arr])
+    window_size = 10
+    padded_height = ceil(max_height / window_size) * window_size
+    padded_time = ceil(max_time / window_size) * window_size
+
+    data_arr = np.zeros((len(batch), data_list_arr[0].shape[0], padded_height, padded_time), dtype=np.float32)
+    for i, arr in enumerate(data_list_arr):
+        h, t = arr.shape[1], arr.shape[2]
+        # change padding to the end
+        start_h = 0
+        start_t = 0
+        data_arr[i, :, start_h:start_h + h, start_t:start_t + t] = arr.numpy() if isinstance(arr, torch.Tensor) else arr
+
+    return torch.tensor(data_arr, dtype=torch.float32), torch.tensor(target)
+    
 '''original in emo_sign_cnn_gan.ipynb'''
 def collate_various_size_original(batch):
     print("collate_various_size1111")
