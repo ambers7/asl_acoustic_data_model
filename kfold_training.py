@@ -14,7 +14,7 @@ from math import ceil
 from add_padding import collate_various_size
 import random
 import pickle
-from acoustic_model_resnet import save_cm_figure
+# from acoustic_model_resnet import save_cm_figure  # Remove this import
 from sklearn.model_selection import KFold
 from sklearn.metrics import confusion_matrix
 import seaborn as sns
@@ -50,7 +50,7 @@ for train_index, test_index in kf.split(train_data):
 
 
 #train ith model: train_data_folds[i] and test_data_folds[i]
-fold = 0
+fold = 3
 
 class KFoldAcousticDataset(Dataset):
         def __init__(self, file_label_pairs, is_train=False):
@@ -94,6 +94,29 @@ class KFoldAcousticDataset(Dataset):
             #convert reshaped numpy array into a pytorch tensor
             
             return arr, label    
+
+# Add local save_cm_figure function
+def save_cm_figure(true_label, predict_label, best_save_path, acc, classes): 
+    true_labels = [label_dic_reverse[i] for i in true_label]
+    predicted_labels = [label_dic_reverse[i] for i in predict_label]
+    # Get unique class names and sort them (ensures correct label order)
+    unique_classes = sorted(set(true_labels) | set(predicted_labels))
+    # Compute confusion matrix with string labels
+    cm = confusion_matrix(true_labels, predicted_labels, labels=unique_classes)
+    cm_normalized = cm.astype('float') / cm.sum(axis=1, keepdims=True)
+    # Plot confusion matrix
+    plt.figure(figsize=(12, 8))
+    sns.heatmap(cm_normalized, annot=True, fmt=".2f", cmap="Blues", linewidths=0.5)
+    # Keep the label order in figure
+    plt.xticks(ticks=np.arange(len(classes)) + 0.5, labels=classes, rotation=90)
+    plt.yticks(ticks=np.arange(len(classes)) + 0.5, labels=classes, rotation=0)
+
+    plt.xlabel("Predicted Label")
+    plt.ylabel("True Label")
+    plt.title("Confusion Matrix - Best Accuracy : %.3f"%acc + " %")
+    plt.xticks(rotation=45)  # Rotate class labels for better visibility
+    plt.yticks(rotation=0)
+    plt.savefig(best_save_path, dpi=300, bbox_inches="tight")  # Saves as a high-quality PNG
 
 if __name__ == "__main__":
     trainset = KFoldAcousticDataset(train_data_folds[fold], is_train=True) #create an instance of the AcousticDataset class, passing in the data directory and label dictionary
@@ -178,14 +201,13 @@ if __name__ == "__main__":
         accuracy = 100 * float(correct_count) / total_pred[classname]
         print(f'Accuracy for class: {classname:5s} is {accuracy:.1f} %')
 
-    run = fold+1  #current run of training the model, +1 since non kfold model is 0
     
     #save confusion matrix
     accuracy = 100 * correct / total  # Calculate accuracy as a float
-    save_cm_figure(ground_truth, predictions, f'cms/acoustic_cnn_cm_{run}.png', accuracy, classes)
+    save_cm_figure(ground_truth, predictions, f'cms/acoustic_cnn_cm_{fold}.png', accuracy, classes)
 
     # save ground_truth and predictions so can get aggregate confusion matrix later
-    with open(f'ground_truth_run{run}.pkl', 'wb') as f:
+    with open(f'ground_truth_run{fold}.pkl', 'wb') as f:
         pickle.dump(ground_truth, f)
-    with open(f'predictions_run{run}.pkl', 'wb') as f:
+    with open(f'predictions_run{fold}.pkl', 'wb') as f:
         pickle.dump(predictions, f)
