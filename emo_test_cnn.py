@@ -67,17 +67,17 @@ batch_size = args.batch
 test_sessions = [i for i in test_sessions.split(',')]
 
 print(test_sessions)
-fusion = True
-imu_1d = True
+fusion = False
+imu_1d = False
 only_imu = False
 
-input_channel_slice = [2]
+input_channel_slice = [3] #use channel 4 for acoustic data
 input_channel = len(input_channel_slice)
 
 
 folder = dataset_folder.split('/dataset/')[0]+'_poi_%s_%s'%(poi_list[0],poi_list[1])+'_th_%s'%(target_height)+'ch%s'%input_channel + '_fusion_%s'%folder_nm
 
-best_save_path = "/data3/hyunchul/asl/Headset_silentspeech1/dl_model/results_emo/%s/"%(folder)
+best_save_path = "./experiments/%s/"%(folder)
 ensure_folder_exists(best_save_path)
 
 
@@ -106,7 +106,7 @@ def print_and_log(message, log_file = best_save_path + "logfile.txt"):
 #        "Happy", "Sad", "Anger", "Fear", "Surprise", "Disgust", 
 #        "MM", "CS", "TH", "INTENSE", "PUFF", "PS", "OO", "CHA"]
     
-lst = ['LIKE', 'FAST', 'YES', 'DRIVE', 'WHY', 'I', 'SHE', 'WHO', 'YOU']
+lst = ['A','B','C','D','E','F','G','H','I','J','K','L','M','N','O','P','Q','R','S','T','U','V','W','X','Y','Z']
 
 label_dic =  {value: index for index, value in enumerate(lst)}
 label_dic_reverse = {index: value for index, value in enumerate(lst)}
@@ -128,6 +128,10 @@ if len(exclude_sessions)>0:
     for i in range(0, len(ex_tmp)):
         train_sessions.remove(ex_tmp[i])
 
+# Remove test sessions from training sessions
+for test_sess in test_sessions:
+    if test_sess in train_sessions:
+        train_sessions.remove(test_sess)
 
 print_and_log('test_sessions: ' + ",".join(test_sessions))
 print_and_log('train_sessions: ' + ",".join(train_sessions))
@@ -248,8 +252,10 @@ class CNNDataset(torch.utils.data.Dataset):
         
     def __getitem__(self, index):
         input_arr = self.data[index][0]
-        input_imu = self.data[index][3]
-        output_arr = deepcopy(self.data[index][2])
+        # input_imu = self.data[index][3]
+        input_imu = self.data[index][2] #now 2 bcuz removed echo_org
+
+        output_arr = deepcopy(self.data[index][1]) #now 1 bcuz removed echo_org
 
         input_arr_copy = deepcopy(input_arr)
         input_imu_copy = deepcopy(input_imu)
@@ -468,10 +474,10 @@ def read_from_folder(session_num, data_path, is_train=False):
         profile_data_piece = profiles.copy()
         profile_data_piece = profile_data_piece.swapaxes(1, 2) # 
 
-        # load echo_org
-        profiles_org = np.load(file_echo_org+"/"+file_echo_org_list[i])
-        profile_data_piece_org = profiles_org.copy()
-        profile_data_piece_org = profile_data_piece_org.swapaxes(1, 2) # 
+        # load echo_org (original echo data)
+        # profiles_org = np.load(file_echo_org+"/"+file_echo_org_list[i])
+        # profile_data_piece_org = profiles_org.copy()
+        # profile_data_piece_org = profile_data_piece_org.swapaxes(1, 2) # 
         
         # upsampling imu data based on echo profile
         psampled_time, upsampled_imu_data = upsample_imu_data(all_imu_time, all_imu, profile_data_piece.shape[1])
@@ -483,7 +489,7 @@ def read_from_folder(session_num, data_path, is_train=False):
             if truth in lst:
             #print("final:",  i,truth, profile_data_piece.shape, normalized_imu_data.shape)
                 data_pairs += [(profile_data_piece[:,:-bad_signal_remove_length,:], 
-                                profile_data_piece_org[:,:-bad_signal_remove_length-1,:], 
+                                # profile_data_piece_org[:,:-bad_signal_remove_length-1,:], 
                                 truth, 
                                 normalized_imu_data[:,:-bad_signal_remove_length,:])]
         else:
