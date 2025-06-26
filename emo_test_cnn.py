@@ -292,7 +292,12 @@ class CNNDataset(torch.utils.data.Dataset):
                 # instance-level norm
                 mu, sigma = np.mean(padded_input_tmp[c]), np.std(padded_input_tmp[c])
                 #print( mu, sigma)
-                padded_input_tmp[c] = (padded_input_tmp[c] - mu) / sigma
+
+                # avoid division by zero
+                if sigma < 1e-8:
+                    padded_input_tmp[c] = padded_input_tmp[c] - mu
+                else:
+                    padded_input_tmp[c] = (padded_input_tmp[c] - mu) / sigma
 
             padded_input_tmp = np.nan_to_num(padded_input_tmp, nan=0.0, posinf=0.0, neginf=0.0)
             padded_input_list.append(padded_input_tmp)
@@ -460,9 +465,13 @@ def read_from_folder(session_num, data_path, is_train=False):
 ########################################################################################    
     for i in range(0, len(file_echo_diff_list)):
         # ground truth
-        gnd = int(file_echo_diff_list[i].split('.')[0].split('_')[2])
-        truth = gt[gnd].split(';')[3]
-        loaded_gt += [gt[gnd].split(';')]
+        # gnd = int(file_echo_diff_list[i].split('.')[0].split('_')[2])
+        # truth = gt[gnd].split(';')[3]
+        # loaded_gt += [gt[gnd].split(';')]
+        file = file_echo_diff_list[i]
+        #last letter before the .npy
+        truth = file.split('_')[-1].split('.')[0]
+
         # load imu
         File_data = np.loadtxt(file_imus+"/"+file_imus_list[i], dtype=str, delimiter=" ") 
         all_imu = np.array(File_data, dtype=float)[:, :3]
@@ -1032,6 +1041,8 @@ for i, (input_arr_raw, target) in enumerate(test_loader):
 
 
 best_val_acc = 0.0
+train_losses = []
+val_losses = []
 for epoch in range(num_epochs):
     model.train()
     running_loss = 0.0
@@ -1119,4 +1130,47 @@ for epoch in range(num_epochs):
 
             print_and_log(f"Epoch [{epoch+1}/{num_epochs}], Loss: {running_loss/len(train_loader):.4f}, Accuracy: {100 * correct/total:.2f}%, Test Accuracy: {test_acc:.2f}%, , Best Accuracy: {best_val_acc:.2f}%")
 
-# %%
+# calculate train loss and validation loss
+    avg_train_loss = running_loss / len(train_loader)
+    train_losses.append(avg_train_loss)
+
+    if epoch % 3 == 0:
+        model.eval()
+        val_running_loss = 0.0
+        with torch.no_grad():
+            for i, (input_arr_raw, target) in enumerate(test_loader):
+                input_arr = input_arr_raw[0][:,input_channel_slice,:,:]
+                input_imu = input_arr_raw[1][:,:,:,:]
+                if not isinstance(input_arr, torch.Tensor):
+                    input_arr = Tensor(input_arr).to(device) #torch.tensor(input_arr, dtype=torch.float32).to(device)
+                else:
+                    input_arr = input_arr.to(device)
+                if not isinstance(input_imu, torch.Tensor):
+                    input_imu = Tensor(input_imu).to(device) #torch.tensor(input_imu, dtype=torch.float32).to(device)
+                else:
+                    input_imu = input_imu.to(device)
+                labels = torch.tensor([label_dic[x] for x in target], dtype=torch.long).to(device)
+                if fusion == True:
+                    outputs = model(input_imu, input_arr)
+                else:
+                    if imu_1d == True:
+                        outputs = model(input_imu)
+                    else:
+                        outputs = model(input_arr)
+                val_loss = criterion(outputs, labels)
+                val_running_loss += val_loss.item()
+            avg_val_loss = val_running_loss / len(test_loader)
+            val_losses.append(avg_val_loss)
+
+
+# plot loss curves
+
+plt.figure()
+plt.plot(train_losses, label='Training Loss')
+plt.plot(val_losses, label='Validation Loss')
+plt.xlabel('Epoch')
+plt.ylabel('Loss')
+plt.legend()
+plt.title('Training and Validation Loss Curves')
+plt.savefig(best_save_path + "loss_curve.png", dpi=300, bbox_inches="tight")
+plt.close()
