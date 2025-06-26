@@ -1,4 +1,6 @@
 # %%
+# python emo_test_cnn.py --dataset_path /data/asl_test -poi 250,600 -g 0 --target_height 330 --folder_name all_signs --batch 10 --test_sessions 0901 --exclude_sessions 0101,0201
+
 import os
 import torch
 from torch.utils.data import Dataset
@@ -36,6 +38,7 @@ parser.add_argument('--exclude_sessions', default='', type=str, help='exclude-se
 parser.add_argument('--test_sessions', default='', type=str, help='test-session')
 parser.add_argument('--folder_name', default='', type=str, help='folder_name')
 parser.add_argument('--batch', default=5, type=int, help='batch')
+parser.add_argument('--resume', default='', type=str, help='Path to checkpoint to resume from')
 
 
 args = parser.parse_args()
@@ -1014,6 +1017,18 @@ else:
 
 criterion = nn.CrossEntropyLoss()
 optimizer = optim.Adam(model.parameters(), lr=0.001)
+
+# Handle resume functionality
+if args.resume:
+    print_and_log(f"Resuming from checkpoint: {args.resume}")
+    checkpoint = torch.load(args.resume, map_location=device)
+    model.load_state_dict(checkpoint['model_state'])
+    optimizer.load_state_dict(checkpoint['optimizer_state'])
+    start_epoch = checkpoint['epoch'] + 1
+    print_and_log(f"Resumed from epoch {start_epoch}")
+else:
+    start_epoch = 0
+
 #device = "cpu"
 
 os.environ['CUDA_VISIBLE_DEVICES'] = '1'
@@ -1043,7 +1058,7 @@ for i, (input_arr_raw, target) in enumerate(test_loader):
 best_val_acc = 0.0
 train_losses = []
 val_losses = []
-for epoch in range(num_epochs):
+for epoch in range(start_epoch, num_epochs):
     model.train()
     running_loss = 0.0
     correct = 0
@@ -1174,3 +1189,8 @@ plt.legend()
 plt.title('Training and Validation Loss Curves')
 plt.savefig(best_save_path + "loss_curve.png", dpi=300, bbox_inches="tight")
 plt.close()
+
+# Save final model regardless of performance
+torch.save(model.state_dict(), best_save_path+"final_model.pth")
+save_checkpoint(model, optimizer, num_epochs-1, filename= best_save_path+"final_checkpoint.pth")
+print_and_log(f"✅ Final model saved at epoch {num_epochs}")
