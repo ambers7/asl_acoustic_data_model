@@ -6,10 +6,13 @@
 *.tif
 *.tiff
 *.npy
+*.pkl
 
 data/
 *.pth
 *.zip
+
+test_results/
 
 *.ipynb
 *.pyc
