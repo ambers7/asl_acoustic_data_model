@@ -182,15 +182,16 @@ print_and_log('train_sessions: ' + ",".join(train_sessions))
 # 10: 'surprised',
 # 11: 'terrified'}
 
-def save_checkpoint(model, optimizer, epoch, filename= best_save_path + "best_checkpoint.pth"):
-    """Save model, optimizer, and epoch number."""
+def save_checkpoint(model, optimizer, epoch, best_acc=0.0, filename= best_save_path + "best_checkpoint.pth"):
+    """Save model, optimizer, epoch number, and best accuracy."""
     checkpoint = {
         "epoch": epoch,  
         "model_state": model.state_dict(),
-        "optimizer_state": optimizer.state_dict()
+        "optimizer_state": optimizer.state_dict(),
+        "best_accuracy": best_acc
     }
     torch.save(checkpoint, filename)
-    print_and_log(f"✅ Checkpoint saved at epoch {epoch+1}")
+    print_and_log(f"✅ Checkpoint saved at epoch {epoch+1} with best accuracy: {best_acc:.2f}%")
 
 
 
@@ -1042,10 +1043,16 @@ if args.resume:
     model.load_state_dict(checkpoint['model_state'])
     optimizer.load_state_dict(checkpoint['optimizer_state'])
     start_epoch = checkpoint['epoch'] + 1
+    
+    # Load previous best accuracy from checkpoint
+    best_val_acc = checkpoint.get('best_accuracy', 0.0)
+    
     print_and_log(f"Resumed from epoch {start_epoch}")
     print_and_log(f"Training will continue from epoch {start_epoch} to {num_epochs}")
+    print_and_log(f"📊 Loaded previous best accuracy from checkpoint: {best_val_acc:.2f}%")
 else:
     start_epoch = 0
+    best_val_acc = 0.0
     print_and_log(f"Starting training from epoch 0 to {num_epochs}")
 
 #device = "cpu"
@@ -1074,7 +1081,6 @@ for i, (input_arr_raw, target) in enumerate(test_loader):
     break
 
 
-best_val_acc = 0.0
 train_losses = []
 val_losses = []
 for epoch in range(start_epoch, num_epochs):
@@ -1158,7 +1164,7 @@ for epoch in range(start_epoch, num_epochs):
                 df = pd.DataFrame({"True Label": true_labels, "Predicted Label": predictions})
                 df.to_csv(best_save_path+"test_results.csv", index=False)
                 torch.save(model.state_dict(), best_save_path+"best_model.pth")
-                save_checkpoint(model, optimizer, epoch, filename= best_save_path+"best_checkpoint.pth")
+                save_checkpoint(model, optimizer, epoch, best_acc=best_val_acc)
                 print_and_log(f"🔥 Best model saved with Test Accuracy: {best_val_acc:.2f}%")
                 save_cm_figure(df["True Label"],df["Predicted Label"], best_save_path, best_val_acc, lst)
 
@@ -1211,7 +1217,7 @@ plt.close()
 
 # Save final model regardless of performance
 torch.save(model.state_dict(), best_save_path+"final_model.pth")
-save_checkpoint(model, optimizer, num_epochs-1, filename= best_save_path+"final_checkpoint.pth")
+save_checkpoint(model, optimizer, num_epochs-1, best_acc=best_val_acc, filename= best_save_path+"final_checkpoint.pth")
 print_and_log(f"✅ Final model saved at epoch {num_epochs}")
 
 # Log training completion
