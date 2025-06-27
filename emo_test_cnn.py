@@ -85,21 +85,38 @@ ensure_folder_exists(best_save_path)
 
 
 
-def print_and_log(message, log_file = best_save_path + "logfile.txt"):
-    """Print message to console and log it to a .txt file."""
-    # Set up logging configuration
+# Set up logging configuration once at the beginning
+def setup_logging(log_file_path):
+    """Set up logging configuration once."""
+    # Clear any existing handlers to avoid duplicates
+    for handler in logging.root.handlers[:]:
+        logging.root.removeHandler(handler)
+    
+    # Configure logging
     logging.basicConfig(
-        format="%(asctime)s - %(message)s",  # Format with timestamp
-        level=logging.INFO,  # Log level
+        format="%(asctime)s - %(message)s",
+        level=logging.INFO,
         handlers=[
             logging.StreamHandler(),  # Print to console
-            logging.FileHandler(log_file, mode='a')  # Log to .txt file (append mode)
+            logging.FileHandler(log_file_path, mode='a')  # Log to file (append mode)
         ]
     )
-    
+    return logging.getLogger(__name__)
+
+# Initialize logger
+logger = setup_logging(best_save_path + "logfile.txt")
+
+# Log script start
+print_and_log("="*50)
+print_and_log("Training script started")
+print_and_log(f"Experiment folder: {best_save_path}")
+print_and_log("="*50)
+
+def print_and_log(message, log_file = best_save_path + "logfile.txt"):
+    """Print message to console and log it to a .txt file."""
     # Print message to console and log it
     print(message)  # Print to console
-    logging.info(message)  # Log the message
+    logger.info(message)  # Log the message
 
 # lst = ["WH", "YN", "RQ", "CD", "NG", "RC", "TP", "AF", 
 #        "Happy", "Sad", "Anger", "Fear", "Surprise", "Disgust", 
@@ -1026,8 +1043,10 @@ if args.resume:
     optimizer.load_state_dict(checkpoint['optimizer_state'])
     start_epoch = checkpoint['epoch'] + 1
     print_and_log(f"Resumed from epoch {start_epoch}")
+    print_and_log(f"Training will continue from epoch {start_epoch} to {num_epochs}")
 else:
     start_epoch = 0
+    print_and_log(f"Starting training from epoch 0 to {num_epochs}")
 
 #device = "cpu"
 
@@ -1194,3 +1213,10 @@ plt.close()
 torch.save(model.state_dict(), best_save_path+"final_model.pth")
 save_checkpoint(model, optimizer, num_epochs-1, filename= best_save_path+"final_checkpoint.pth")
 print_and_log(f"✅ Final model saved at epoch {num_epochs}")
+
+# Log training completion
+print_and_log("="*50)
+print_and_log("Training completed successfully!")
+print_and_log(f"Best validation accuracy: {best_val_acc:.2f}%")
+print_and_log(f"Final model and checkpoint saved in: {best_save_path}")
+print_and_log("="*50)
