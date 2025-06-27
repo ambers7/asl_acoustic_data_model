@@ -14,5 +14,4 @@ data/
 
 test_results/
 
-*.ipynb
 *.pyc

@@ -1,4 +1,3 @@
-# %%
 # python emo_test_cnn.py --dataset_path /data/asl_test -poi 250,600 -g 0 --target_height 330 --folder_name all_signs --batch 10 --test_sessions 0901 --exclude_sessions 0101,0201
 
 import os
@@ -198,7 +197,7 @@ def save_checkpoint(model, optimizer, epoch, best_acc=0.0, filename= best_save_p
 print_and_log("This is a log message.")
 
 
-# %%
+
 def collate_various_size(batch):
 
     data_list_arr = [x[0][0] for x in batch]
@@ -367,7 +366,7 @@ class DataBatches:
         return all_indices
 
 
-# %%
+
 def upsample_imu_data(time, imu_data, target_num_samples):
     """
     Upsample IMU data to a target number of samples.
@@ -462,7 +461,7 @@ def vis(input):
     plt.imshow(acous_npy_img.astype(np.uint16), aspect = 'auto')
 
 
-# %%
+
 def read_from_folder(session_num, data_path, is_train=False):
     file_path = data_path + '%s'%str(session_num)
     file_echo_org = file_path +  "/" + 'acoustic/non_diff'
@@ -537,7 +536,7 @@ def read_from_folder(session_num, data_path, is_train=False):
 #     print(content, end=end)
 #     logging.info(content)
 
-# %%
+
 
 train_data = []
 test_data = []
@@ -581,12 +580,12 @@ for p in test_sessions:
     test_data += this_test_data
     test_loaded_gt += this_loaded_gt
 
-# %%
+
 label = []
 for i in this_loaded_gt:
     label.append(i[3])
 
-# %%
+
 
 
 def save_cm_figure(true_label,predict_label, best_save_path, acc, lst): 
@@ -612,7 +611,7 @@ def save_cm_figure(true_label,predict_label, best_save_path, acc, lst):
     plt.yticks(rotation=0)
     plt.savefig(best_save_path+"confusion_matrix.png", dpi=300, bbox_inches="tight")  # Saves as a high-quality PNG
 
-# %%
+
 rand_indices = list(range(len(train_data)))
 random.shuffle(rand_indices)
 train_data_w_lengths = [(x[0].shape[1], rand_indices[i], x) for i, x in enumerate(train_data)]
@@ -625,7 +624,7 @@ train_data = [x[2] for x in train_data_w_lengths]
 #########################################################################################################################################################################
 #########################################################################################################################################################################
 
-# %%
+
 import torch.optim as optim
 from torchvision import datasets, transforms
 from torch.utils.data import DataLoader
@@ -634,7 +633,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-# %%
+
 # Define a basic Residual Block
 class BasicBlock(nn.Module):
     expansion = 1  # Output channels same as input
@@ -1059,7 +1058,7 @@ else:
 
 os.environ['CUDA_VISIBLE_DEVICES'] = '1'
 os.environ['CUDA_LAUNCH_BLOCKING'] = '1'
-# %%
+
 
 
 
