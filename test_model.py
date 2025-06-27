@@ -263,8 +263,10 @@ class CNNDataset(torch.utils.data.Dataset):
 
 def collate_various_size(batch):
     data_list_arr = [x[0][0] for x in batch]
-    data_list_imu = [x[0][1] for x in batch]
+    # data_list_imu = [x[0][1] for x in batch]  # Ignore IMU data
     target = [x[1] for x in batch]
+    
+    # Get max size for acoustic data only
     data_max_size = max([x.shape[1] for x in data_list_arr])
     
     window_size = 10
@@ -272,22 +274,22 @@ def collate_various_size(batch):
     target_length = ceil(target_length / window_size) * window_size
 
     data_arr = np.zeros((len(batch), data_list_arr[0].shape[0], target_length, data_list_arr[0].shape[2]))
-    data_imu = np.zeros((len(batch), data_list_imu[0].shape[0], target_length, data_list_imu[0].shape[2]))
+    # data_imu = np.zeros((len(batch), data_list_imu[0].shape[0], target_length, data_list_imu[0].shape[2]))  # Ignore IMU
     
     for i in range(0, len(data_list_arr)):
         start_x = random.randint(0, target_length - data_list_arr[i].shape[1])
         data_arr[i, :, start_x: start_x + data_list_arr[i].shape[1], :] = data_list_arr[i]
-        data_imu[i, :, start_x: start_x + data_imu[i].shape[1], :] = data_list_imu[i]
+        # data_imu[i, :, start_x: start_x + data_imu[i].shape[1], :] = data_list_imu[i]
 
     data_arr = data_arr.swapaxes(2,3)
-    data_imu = data_imu.swapaxes(2,3)
+    # data_imu = data_imu.swapaxes(2,3)  # Ignore IMU
         
-    return (data_arr, data_imu), target
+    return (data_arr, None), target  # Return None for IMU data
 
 parser = argparse.ArgumentParser(description='Test Model on Multiple Datasets')
 parser.add_argument('--model_path', required=True, type=str, help='Path to the trained model (.pth file)')
-parser.add_argument('--test_datasets', default='', type=str, help='Comma-separated list of test session folders (e.g., 10_01,11_01)')
-parser.add_argument('--dataset_root', default='asl_test/dataset', type=str, help='Root path to dataset folder')
+parser.add_argument('--test_datasets', default='', type=str, help='Comma-separated list of test session folders (e.g., 0901,1001)')
+parser.add_argument('--dataset_root', default='/data/asl_test', type=str, help='Root path to dataset folder')
 parser.add_argument('--poi', default='0,600', type=str, help='Point of interest (start,end)')
 parser.add_argument('--target_height', default=80, type=int, help='Target height for cropping')
 parser.add_argument('--batch_size', default=5, type=int, help='Batch size for testing')
@@ -383,7 +385,9 @@ print("✅ Model loaded successfully")
 
 # Test on each dataset
 results = {}
-data_path = args.dataset_root + '/dataset/session_'
+# Use the same path construction as emo_test_cnn.py
+dp = args.dataset_root + '/dataset/'
+data_path = dp + 'session_'
 
 for session in test_sessions:
     print(f"\n{'='*50}")
@@ -417,7 +421,7 @@ for session in test_sessions:
     with torch.no_grad():
         for i, (input_arr_raw, target) in enumerate(test_loader):
             input_arr = input_arr_raw[0][:, input_channel_slice, :, :]
-            input_imu = input_arr_raw[1][:, :, :, :]
+            # input_imu = input_arr_raw[1][:, :, :, :]  # Ignore IMU data
             
             # Convert to tensors
             if not isinstance(input_arr, torch.Tensor):
@@ -425,14 +429,14 @@ for session in test_sessions:
             else:
                 input_arr = input_arr.to(device)
             
-            if not isinstance(input_imu, torch.Tensor):
-                input_imu = torch.tensor(input_imu, dtype=torch.float32).to(device)
-            else:
-                input_imu = input_imu.to(device)
+            # if not isinstance(input_imu, torch.Tensor):
+            #     input_imu = torch.tensor(input_imu, dtype=torch.float32).to(device)
+            # else:
+            #     input_imu = input_imu.to(device)
             
             labels = torch.tensor([label_dic[x] for x in target], dtype=torch.long).to(device)
             
-            # Forward pass
+            # Forward pass - only use acoustic data
             outputs = model(input_arr)
             
             _, predicted = torch.max(outputs, 1)
