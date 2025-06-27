@@ -106,17 +106,17 @@ def setup_logging(log_file_path):
 # Initialize logger
 logger = setup_logging(best_save_path + "logfile.txt")
 
-# Log script start
-print_and_log("="*50)
-print_and_log("Training script started")
-print_and_log(f"Experiment folder: {best_save_path}")
-print_and_log("="*50)
-
 def print_and_log(message, log_file = best_save_path + "logfile.txt"):
     """Print message to console and log it to a .txt file."""
     # Print message to console and log it
     print(message)  # Print to console
     logger.info(message)  # Log the message
+
+# Log script start
+print_and_log("="*50)
+print_and_log("Training script started")
+print_and_log(f"Experiment folder: {best_save_path}")
+print_and_log("="*50)
 
 # lst = ["WH", "YN", "RQ", "CD", "NG", "RC", "TP", "AF", 
 #        "Happy", "Sad", "Anger", "Fear", "Surprise", "Disgust", 
