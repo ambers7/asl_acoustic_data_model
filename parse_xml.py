@@ -6,9 +6,9 @@ import glob
 # Map requested features to XML label names
 feature_map = {
     'negative': 'negative',
-    'wh_question': 'wh-question',
+    'wh_question': 'wh question',
     'yes_no_question': 'yes-no-question',
-    'topic_focus': 'topic-focus',
+    'topic_focus': 'topic/focus',
     'conditional_when': 'conditional-when',
     'role_shift': 'role-shift',
     'head_pos_tilt_fr_bk': 'head pos: tilt fr/bk',
