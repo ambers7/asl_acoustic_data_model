@@ -2,6 +2,7 @@ import xml.etree.ElementTree as ET
 import csv
 import os
 import glob
+import re
 
 # Map requested features to XML label names
 feature_map = {
@@ -37,10 +38,13 @@ if not xml_files:
     print("No XML files found in xml_files/ directory.")
     exit()
 
-csv_file = 'xml_csvs/asl_public_dataset.csv'
+csv_file = 'xml_csvs/count_asl_public_dataset.csv'
 with open(csv_file, 'w', newline='', encoding='utf-8') as f:
     writer = csv.writer(f)
-    header = ['#', 'utterance_id', 'translation', 'asl_gloss'] + list(feature_map.keys())
+    # Create header with count columns
+    face_features = ['face_eye_brows', 'face_eye_gaze', 'face_eye_aperture', 'face_nose', 'face_mouth', 'face_cheeks']
+    face_count_columns = [f'count_{feature}' for feature in face_features]
+    header = ['#', 'utterance_id', 'translation', 'asl_gloss', 'count_asl_gloss'] + list(feature_map.keys()) + face_count_columns
     writer.writerow(header)
 
     for xml_file in xml_files:
@@ -68,7 +72,16 @@ with open(csv_file, 'w', newline='', encoding='utf-8') as f:
                     for sign in manuals.findall('SIGN'):
                         label_elem = sign.find('LABEL')
                         if label_elem is not None and label_elem.text:
-                            labels.append(label_elem.text.strip("'"))
+                            # Clean the ASL gloss by removing #, +, (1h), (2h), and " characters
+                            label_text = label_elem.text.strip("'")
+                            # Remove the specified characters
+                            cleaned_label = re.sub(r'[#+"]', '', label_text)  # Remove #, +, and "
+                            cleaned_label = re.sub(r'\(1h\)', '', cleaned_label)  # Remove (1h)
+                            cleaned_label = re.sub(r'\(2h\)', '', cleaned_label)  # Remove (2h)
+                            # Clean up any extra whitespace
+                            cleaned_label = cleaned_label.strip()
+                            if cleaned_label:  # Only add non-empty labels
+                                labels.append(cleaned_label)
 
                 nonmanuals = utterance.find('NON_MANUALS')
                 feature_values = []
@@ -84,7 +97,25 @@ with open(csv_file, 'w', newline='', encoding='utf-8') as f:
                                     values.append(value_elem.text.strip("'") if value_elem.text else '')
                     feature_values.append(';'.join(values))
 
-                writer.writerow([collection_id, utterance_id, translation, ';'.join(labels)] + feature_values)
+                # Calculate counts
+                asl_gloss_count = len(labels)
+                
+                # Calculate face feature counts
+                face_counts = []
+                for i, feature in enumerate(['face_eye_brows', 'face_eye_gaze', 'face_eye_aperture', 'face_nose', 'face_mouth', 'face_cheeks']):
+                    # Find the index of this feature in feature_values
+                    feature_index = list(feature_map.keys()).index(feature)
+                    feature_value = feature_values[feature_index]
+                    # Count non-empty values (split by semicolon)
+                    if feature_value and feature_value.strip():
+                        count = len([x for x in feature_value.split(';') if x.strip()])
+                    else:
+                        count = 0
+                    face_counts.append(count)
+                
+                # Combine all data
+                row_data = [collection_id, utterance_id, translation, ';'.join(labels), asl_gloss_count] + feature_values + face_counts
+                writer.writerow(row_data)
 
         except Exception as e:
             print(f"Error processing {xml_file}: {e}")
