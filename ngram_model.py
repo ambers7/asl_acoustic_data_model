@@ -1,5 +1,6 @@
 import pandas as pd
 from collections import Counter
+import numpy as np
 
 # Load the dataset
 try:
@@ -12,7 +13,7 @@ except FileNotFoundError:
 
 # Extract the 'asl_gloss' column which contains the glosses
 glosses = df['asl_gloss'].dropna().tolist()
-print(glosses)
+# print(glosses)
 
 # Preprocess the glosses
 preprocessed_glosses = []
@@ -35,48 +36,70 @@ for sentence in preprocessed_glosses:
     for i in range(len(sentence) - 1):
         bigram_counts[(sentence[i], sentence[i+1])] += 1
 
-# --- 3. Calculating Probabilities (for a bigram model) ---
+# Vocabulary size (V) is the number of unique unigrams
+V = len(unigram_counts)
 
-def calculate_bigram_probability(word1, word2, unigram_counts, bigram_counts):
-    """Calculates the unsmoothed probability P(word2 | word1)"""
-    actual_bigram_key = (word1, word2)
-    
-    if unigram_counts[word1] == 0:
-        return 0.0 # Cannot divide by zero
-    
-    return bigram_counts[actual_bigram_key] / unigram_counts[word1]
+# --- 3. Calculating Probabilities with Smoothing ---
 
+def calculate_add_one_smoothed_probability(word1, word2, unigram_counts, bigram_counts, V):
+    """Calculates the add-one smoothed probability P(word2 | word1)"""
+    bigram_key = (word1, word2)
+    
+    # Get the counts, adding 1 to the numerator
+    numerator = bigram_counts[bigram_key] + 1
+    
+    # Get the counts, adding V to the denominator
+    denominator = unigram_counts[word1] + V
+    
+    if denominator == 0:
+        return 0.0 # Should not happen if V > 0
+        
+    return numerator / denominator
 
 # --- 4. Example Usage ---
 
-# Example: Calculate the probability of "BOOK" following "COLOR"
-prob_color_book = calculate_bigram_probability('COLOR', 'BOOK', unigram_counts, bigram_counts)
+# Example: Calculate the probability of "BOOK" following "COLOR" with smoothing
+prob_color_book_smoothed = calculate_add_one_smoothed_probability('COLOR', 'BOOK', unigram_counts, bigram_counts, V)
 
-print("\n--- Training Results ---")
-print(f"Total unique unigrams (vocabulary size): {len(unigram_counts)}")
-print(f"Total unique bigrams found: {len(bigram_counts)}")
+print("\n--- Results with Add-One Smoothing ---")
+print(f"Vocabulary Size (V): {V}")
+print(f"\nSmoothed Probability of 'BOOK' following 'COLOR', P(BOOK|COLOR): {prob_color_book_smoothed:.8f}")
 
-print("\n--- Example Calculation ---")
-print("Top 10 most common unigrams:", unigram_counts.most_common(10))
-print("Top 10 most common bigrams:", bigram_counts.most_common(10))
-print(f"\nProbability of 'BOOK' following 'COLOR', P(BOOK|COLOR): {prob_color_book:.4f}")
 
-# Example of calculating a sentence probability
-sentence_to_test = "IX-1p POSS-1p GRANDMOTHER TEACH-1p ME ASL"
-tokens_to_test = ['<s>'] + sentence_to_test.split() + ['</s>']
-sentence_probability = 1.0
+# Example of calculating a sentence probability with smoothing
+sentences_to_test = [
+    "IX-1p POSS-1p GRANDMOTHER TEACH-1p ME ASL",
+    "IX-1p LIKE BOOK",
+    "POSS-1p MOTHER LOVE ME",
+    "IX-1p GO SCHOOL",
+    "TEACHER GIVE HOMEWORK",
+    "IX-3p WANT EAT",
+    "STUDENT LEARN SIGN LANGUAGE",
+    "IX-1p NEED HELP",
+    "FRIEND VISIT IX-1p"
+]
 
-print(f"\nCalculating probability for the sentence: '{sentence_to_test}'")
-for i in range(len(tokens_to_test) - 1):
-    word1, word2 = tokens_to_test[i], tokens_to_test[i+1]
-    prob = calculate_bigram_probability(word1, word2, unigram_counts, bigram_counts)
-    print(f"P({word2}|{word1}) = {prob:.4f}")
-    if prob > 0:
-        sentence_probability *= prob
-    else:
-        # If any part of the sequence has 0 probability, the whole sentence does (without smoothing)
-        sentence_probability = 0
-        break
+summary_results = []
+for sentence_to_test in sentences_to_test:
+    tokens_to_test = ['<s>'] + sentence_to_test.split() + ['</s>']
+    # Use log probabilities to avoid underflow with very small numbers
+    sentence_log_probability_smoothed = 0.0
 
-print(f"\nUnsmoothed probability of the sentence is: {sentence_probability}")
-print("\nNote: A probability of 0 for the sentence is common without smoothing, as it's likely that at least one bigram was not seen in the training data.")
+    print(f"\nCalculating smoothed probability for the sentence: '{sentence_to_test}'")
+    for i in range(len(tokens_to_test) - 1):
+        word1, word2 = tokens_to_test[i], tokens_to_test[i+1]
+        prob = calculate_add_one_smoothed_probability(word1, word2, unigram_counts, bigram_counts, V)
+        print(f"P({word2}|{word1}) = {prob:.8f}")
+        sentence_log_probability_smoothed += np.log(prob)
+
+    # The final probability is e^(sum of log probabilities)
+    final_prob = np.exp(sentence_log_probability_smoothed)
+
+    print(f"Smoothed Log Probability of the sentence is: {sentence_log_probability_smoothed:.4f}")
+    print(f"Smoothed Probability of the sentence is: {final_prob:.2e}")
+    summary_results.append((sentence_to_test, sentence_log_probability_smoothed))
+
+# Print summary table
+print("\n--- Summary: Sentence Log Probabilities ---")
+for sent, log_prob in summary_results:
+    print(f"Sentence: {sent}\nLog Probability: {log_prob:.4f}\n")
