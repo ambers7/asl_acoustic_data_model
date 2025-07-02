@@ -42,14 +42,22 @@ if not xml_files:
 csv_file = 'xml_csvs/count_asl_public_dataset.csv'
 word_count_file = 'xml_csvs/english_word_counts.csv'
 
-# Initialize word counter
+# Initialize word counters
 word_counter = Counter()
+face_counters = {
+    'face_eye_brows': Counter(),
+    'face_eye_gaze': Counter(),
+    'face_eye_aperture': Counter(),
+    'face_nose': Counter(),
+    'face_mouth': Counter(),
+    'face_cheeks': Counter()
+}
+face_counter = Counter()  # Combined face counter
+head_counter = Counter()
 
-def clean_word(word):
-    """Clean a word by removing punctuation and converting to lowercase."""
-    # Remove punctuation and convert to lowercase
-    cleaned = re.sub(r'[^\w\s]', '', word.lower())
-    return cleaned.strip()
+def clean_phrase(phrase):
+    """Clean a phrase by trimming whitespace."""
+    return phrase.strip()
 
 with open(csv_file, 'w', newline='', encoding='utf-8') as f:
     writer = csv.writer(f)
@@ -82,7 +90,8 @@ with open(csv_file, 'w', newline='', encoding='utf-8') as f:
                     if translation.strip():
                         words = translation.split()
                         for word in words:
-                            cleaned_word = clean_word(word)
+                            cleaned_word = re.sub(r'[^\w\s]', '', word.lower())
+                            cleaned_word = cleaned_word.strip()
                             if cleaned_word:  # Only count non-empty words
                                 word_counter[cleaned_word] += 1
 
@@ -120,7 +129,7 @@ with open(csv_file, 'w', newline='', encoding='utf-8') as f:
                 # Calculate counts
                 asl_gloss_count = len(labels)
                 
-                # Calculate face feature counts
+                # Calculate face feature counts and collect words
                 face_counts = []
                 for i, feature in enumerate(['face_eye_brows', 'face_eye_gaze', 'face_eye_aperture', 'face_nose', 'face_mouth', 'face_cheeks']):
                     # Find the index of this feature in feature_values
@@ -128,10 +137,30 @@ with open(csv_file, 'w', newline='', encoding='utf-8') as f:
                     feature_value = feature_values[feature_index]
                     # Count non-empty values (split by semicolon)
                     if feature_value and feature_value.strip():
-                        count = len([x for x in feature_value.split(';') if x.strip()])
+                        values = [x.strip() for x in feature_value.split(';') if x.strip()]
+                        count = len(values)
+                        # Count phrases for this face feature
+                        for value in values:
+                            cleaned_phrase = clean_phrase(value)
+                            if cleaned_phrase:
+                                face_counters[feature][cleaned_phrase] += 1
+                                face_counter[cleaned_phrase] += 1  # Add to combined face counter
                     else:
                         count = 0
                     face_counts.append(count)
+                
+                # Collect head feature words
+                head_features = ['head_pos_tilt_fr_bk', 'head_pos_turn', 'head_pose_tilt_side', 'head_pose_jut', 
+                               'head_mvmt_nod', 'head_mvmt_nod_cycles', 'head_mvmt_shake', 'head_mvmt_side_to_side', 'head_mvmt_jut']
+                for feature in head_features:
+                    feature_index = list(feature_map.keys()).index(feature)
+                    feature_value = feature_values[feature_index]
+                    if feature_value and feature_value.strip():
+                        values = [x.strip() for x in feature_value.split(';') if x.strip()]
+                        for value in values:
+                            cleaned_phrase = clean_phrase(value)
+                            if cleaned_phrase:
+                                head_counter[cleaned_phrase] += 1
                 
                 # Combine all data
                 row_data = [collection_id, utterance_id, translation, ';'.join(labels), asl_gloss_count] + feature_values + face_counts
@@ -143,24 +172,60 @@ with open(csv_file, 'w', newline='', encoding='utf-8') as f:
 
 print(f"CSV file '{csv_file}' created.")
 
-# Create word count CSV
-print(f"Creating word count CSV: {word_count_file}")
+# Create word count CSVs
+print(f"Creating word count CSVs...")
+
+# English word counts
 word_counts = word_counter.most_common()
-
-# Convert to list of lists for CSV writing
-word_data = []
-for word, count in word_counts:
-    word_data.append([word, count])
-
-# Write word count CSV
 with open(word_count_file, 'w', newline='', encoding='utf-8') as f:
     writer = csv.writer(f)
     writer.writerow(['word', 'count'])
-    writer.writerows(word_data)
+    for word, count in word_counts:
+        writer.writerow([word, count])
 
-print(f"Word count CSV '{word_count_file}' created.")
-print(f"Total unique words: {len(word_counts)}")
-print(f"Total word occurrences: {sum(count for _, count in word_counts)}")
-print(f"Top 10 most frequent words:")
+print(f"English word count CSV '{word_count_file}' created.")
+print(f"Total unique English words: {len(word_counts)}")
+print(f"Total English word occurrences: {sum(count for _, count in word_counts)}")
+
+# Face feature word counts
+for feature, counter in face_counters.items():
+    feature_file = f'xml_csvs/{feature}_word_counts.csv'
+    feature_counts = counter.most_common()
+    with open(feature_file, 'w', newline='', encoding='utf-8') as f:
+        writer = csv.writer(f)
+        writer.writerow(['word', 'count'])
+        for word, count in feature_counts:
+            writer.writerow([word, count])
+    print(f"{feature} word count CSV '{feature_file}' created.")
+    print(f"  Total unique words: {len(feature_counts)}")
+    print(f"  Total occurrences: {sum(count for _, count in feature_counts)}")
+
+# Face feature word counts (combined)
+face_file = 'xml_csvs/face_word_counts.csv'
+face_counts = face_counter.most_common()
+with open(face_file, 'w', newline='', encoding='utf-8') as f:
+    writer = csv.writer(f)
+    writer.writerow(['word', 'count'])
+    for word, count in face_counts:
+        writer.writerow([word, count])
+
+print(f"Face word count CSV '{face_file}' created.")
+print(f"Total unique face words: {len(face_counts)}")
+print(f"Total face word occurrences: {sum(count for _, count in face_counts)}")
+
+# Head feature word counts (combined)
+head_file = 'xml_csvs/head_word_counts.csv'
+head_counts = head_counter.most_common()
+with open(head_file, 'w', newline='', encoding='utf-8') as f:
+    writer = csv.writer(f)
+    writer.writerow(['word', 'count'])
+    for word, count in head_counts:
+        writer.writerow([word, count])
+
+print(f"Head word count CSV '{head_file}' created.")
+print(f"Total unique head words: {len(head_counts)}")
+print(f"Total head word occurrences: {sum(count for _, count in head_counts)}")
+
+print("\nTop 10 most frequent English words:")
 for rank, (word, count) in enumerate(word_counts[:10], 1):
     print(f"  {rank}. {word}: {count}") 
