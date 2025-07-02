@@ -3,6 +3,7 @@ import csv
 import os
 import glob
 import re
+from collections import Counter
 
 # Map requested features to XML label names
 feature_map = {
@@ -39,6 +40,17 @@ if not xml_files:
     exit()
 
 csv_file = 'xml_csvs/count_asl_public_dataset.csv'
+word_count_file = 'xml_csvs/english_word_counts.csv'
+
+# Initialize word counter
+word_counter = Counter()
+
+def clean_word(word):
+    """Clean a word by removing punctuation and converting to lowercase."""
+    # Remove punctuation and convert to lowercase
+    cleaned = re.sub(r'[^\w\s]', '', word.lower())
+    return cleaned.strip()
+
 with open(csv_file, 'w', newline='', encoding='utf-8') as f:
     writer = csv.writer(f)
     # Create header with count columns
@@ -65,6 +77,14 @@ with open(csv_file, 'w', newline='', encoding='utf-8') as f:
                 translation = ''
                 if translation_elem is not None and translation_elem.text is not None:
                     translation = translation_elem.text.strip("'")
+                    
+                    # Count words in translation
+                    if translation.strip():
+                        words = translation.split()
+                        for word in words:
+                            cleaned_word = clean_word(word)
+                            if cleaned_word:  # Only count non-empty words
+                                word_counter[cleaned_word] += 1
 
                 labels = []
                 manuals = utterance.find('MANUALS')
@@ -121,4 +141,26 @@ with open(csv_file, 'w', newline='', encoding='utf-8') as f:
             print(f"Error processing {xml_file}: {e}")
             continue
 
-print(f"CSV file '{csv_file}' created.") 
+print(f"CSV file '{csv_file}' created.")
+
+# Create word count CSV
+print(f"Creating word count CSV: {word_count_file}")
+word_counts = word_counter.most_common()
+
+# Convert to list of lists for CSV writing
+word_data = []
+for word, count in word_counts:
+    word_data.append([word, count])
+
+# Write word count CSV
+with open(word_count_file, 'w', newline='', encoding='utf-8') as f:
+    writer = csv.writer(f)
+    writer.writerow(['word', 'count'])
+    writer.writerows(word_data)
+
+print(f"Word count CSV '{word_count_file}' created.")
+print(f"Total unique words: {len(word_counts)}")
+print(f"Total word occurrences: {sum(count for _, count in word_counts)}")
+print(f"Top 10 most frequent words:")
+for rank, (word, count) in enumerate(word_counts[:10], 1):
+    print(f"  {rank}. {word}: {count}") 
