@@ -4,6 +4,7 @@ import os
 import glob
 import re
 from collections import Counter
+# from nrclex import NRCLex
 
 # Map requested features to XML label names
 feature_map = {
@@ -32,6 +33,28 @@ feature_map = {
     'face_cheeks': 'cheeks',
 }
 
+from collections import defaultdict
+import re
+
+# Load NRC Emotion Lexicon
+emotion_lexicon = defaultdict(set)
+
+with open('NRC-Emotion-Lexicon-Wordlevel-v0.92.txt', 'r', encoding='utf-8') as f:
+    for line in f:
+        word, emotion, score = line.strip().split('\t')
+        if int(score) == 1:
+            emotion_lexicon[emotion].add(word)
+
+# Optional: combine all emotional words into one flat set
+all_emotion_words = set()
+for words in emotion_lexicon.values():
+    all_emotion_words |= words
+
+def get_emotion_words(text):
+    words = re.findall(r'\b\w+\b', text.lower())
+    emotion_words = [w for w in words if w in all_emotion_words]
+    return ';'.join(emotion_words)
+
 # Get all XML files in the xml_files directory
 xml_files = glob.glob('xml_files/*.xml')
 
@@ -39,7 +62,7 @@ if not xml_files:
     print("No XML files found in xml_files/ directory.")
     exit()
 
-csv_file = 'xml_csvs/count_asl_public_dataset.csv'
+csv_file = 'xml_csvs/emotion_asl.csv'
 word_count_file = 'xml_csvs/english_word_counts.csv'
 
 # Initialize word counters
@@ -64,7 +87,7 @@ with open(csv_file, 'w', newline='', encoding='utf-8') as f:
     # Create header with count columns
     face_features = ['face_eye_brows', 'face_eye_gaze', 'face_eye_aperture', 'face_nose', 'face_mouth', 'face_cheeks']
     face_count_columns = [f'count_{feature}' for feature in face_features]
-    header = ['#', 'utterance_id', 'translation', 'asl_gloss', 'count_asl_gloss'] + list(feature_map.keys()) + face_count_columns
+    header = ['#', 'utterance_id', 'translation', 'emotion_words', 'asl_gloss', 'count_asl_gloss'] + list(feature_map.keys()) + face_count_columns
     writer.writerow(header)
 
     for xml_file in xml_files:
@@ -83,8 +106,12 @@ with open(csv_file, 'w', newline='', encoding='utf-8') as f:
                 utterance_id = utterance.get('ID', '').strip("'")
                 translation_elem = utterance.find('TRANSLATION')
                 translation = ''
+                emotion_words = ''
                 if translation_elem is not None and translation_elem.text is not None:
+                    # Get the English translation
                     translation = translation_elem.text.strip("'")
+                    # Extract emotion words from the English translation
+                    emotion_words = get_emotion_words(translation)
                     
                     # Count words in translation
                     if translation.strip():
@@ -163,7 +190,7 @@ with open(csv_file, 'w', newline='', encoding='utf-8') as f:
                                 head_counter[cleaned_phrase] += 1
                 
                 # Combine all data
-                row_data = [collection_id, utterance_id, translation, ';'.join(labels), asl_gloss_count] + feature_values + face_counts
+                row_data = [collection_id, utterance_id, translation, emotion_words, ';'.join(labels), asl_gloss_count] + feature_values + face_counts
                 writer.writerow(row_data)
 
         except Exception as e:
