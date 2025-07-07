@@ -9,6 +9,8 @@ from nltk.corpus import wordnet as wn_nltk
 from nltk.corpus import sentiwordnet as swn
 from collections import defaultdict
 import wn
+import torch
+from transformers import pipeline
 
 # Map requested features to XML label names
 feature_map = {
@@ -107,7 +109,8 @@ class EmotionAnalyzer:
         pos_score = neg_score = obj_score = 0.0
         count = 0
         
-        for synset in synsets:
+        # get all possible meanings of a word and get sentiment scores for each meaning
+        for synset in synsets: # synset: synonym set
             try:
                 if hasattr(synset, 'name') and callable(synset.name):
                     senti_synset = swn.senti_synset(synset.name())
@@ -143,7 +146,7 @@ class EmotionAnalyzer:
             for synset in synsets:
                 try:
                     # Check hypernyms for emotion-related concepts
-                    for hyper in synset.hypernyms():
+                    for hyper in synset.hypernyms(): #checking related words for emotions
                         try:
                             hyper_def = hyper.definition()
                             if isinstance(hyper_def, str) and ('emotion' in hyper_def or 'feeling' in hyper_def):
@@ -211,16 +214,46 @@ class EmotionAnalyzer:
 emotion_analyzer = EmotionAnalyzer()
 
 def get_emotion_pairs(text):
-    """Get emotion word pairs from all three sources."""
+    """Get emotion word pairs from all three sources plus transformer emotions."""
     if not text or not isinstance(text, str):
-        return '', '', ''
+        return '', '', '', ''
     
     analysis = emotion_analyzer.analyze_text(text)
+    transformer_emotions = get_transformer_emotions(text)
+    
     return (
         ';'.join(analysis['nrc_pairs']),
         ';'.join(analysis['nltk_pairs']),
-        ';'.join(analysis['wn_pairs'])
+        ';'.join(analysis['wn_pairs']),
+        transformer_emotions
     )
+
+
+# Initialize emotion classifier
+emotion_classifier = pipeline(
+    "text-classification",
+    model="j-hartmann/emotion-english-distilroberta-base",
+    return_all_scores=True
+)
+
+def get_transformer_emotions(text):
+    """Get emotions from text using HuggingFace transformers."""
+    if not text or not isinstance(text, str):
+        return ''
+    try:
+        # Get emotion predictions
+        emotions = emotion_classifier(text)[0]
+        # Sort by score and get top emotions (those with score > 0.3)
+        significant_emotions = [
+            emotion['label'] 
+            for emotion in sorted(emotions, key=lambda x: x['score'], reverse=True)
+            if emotion['score'] > 0.3
+        ]
+        return ';'.join(significant_emotions) if significant_emotions else 'neutral'
+    except Exception as e:
+        print(f"Error in transformer emotion processing: {e}")
+        return ''
+
 
 # Get all XML files in the xml_files directory
 xml_files = glob.glob('xml_files/*.xml')
@@ -255,7 +288,7 @@ with open(csv_file, 'w', newline='', encoding='utf-8') as f:
     # Add separate columns for each emotion analysis method
     face_features = ['face_eye_brows', 'face_eye_gaze', 'face_eye_aperture', 'face_nose', 'face_mouth', 'face_cheeks']
     face_count_columns = [f'count_{feature}' for feature in face_features]
-    header = ['#', 'utterance_id', 'translation', 'nrc_emotions', 'nltk_emotions', 'wn_emotions', 'asl_gloss', 'count_asl_gloss'] + list(feature_map.keys()) + face_count_columns
+    header = ['#', 'utterance_id', 'translation', 'nrc_emotions', 'nltk_emotions', 'wn_emotions', 'transformer_emotions', 'asl_gloss', 'count_asl_gloss'] + list(feature_map.keys()) + face_count_columns
     writer.writerow(header)
 
     for xml_file in xml_files:
@@ -276,9 +309,10 @@ with open(csv_file, 'w', newline='', encoding='utf-8') as f:
                 nrc_pairs = ''
                 nltk_pairs = ''
                 wn_pairs = ''
+                transformer_emotions = ''
                 if translation_elem is not None and translation_elem.text is not None:
                     translation = translation_elem.text.strip("'")
-                    nrc_pairs, nltk_pairs, wn_pairs = get_emotion_pairs(translation)
+                    nrc_pairs, nltk_pairs, wn_pairs, transformer_emotions = get_emotion_pairs(translation)
                     
                     # Count words in translation
                     if translation.strip():
@@ -357,7 +391,7 @@ with open(csv_file, 'w', newline='', encoding='utf-8') as f:
                                 head_counter[cleaned_phrase] += 1
                 
                 # Add emotion pairs to row_data
-                row_data = [collection_id, utterance_id, translation, nrc_pairs, nltk_pairs, wn_pairs, ';'.join(labels), asl_gloss_count] + feature_values + face_counts
+                row_data = [collection_id, utterance_id, translation, nrc_pairs, nltk_pairs, wn_pairs, transformer_emotions, ';'.join(labels), asl_gloss_count] + feature_values + face_counts
                 writer.writerow(row_data)
 
         except Exception as e:
