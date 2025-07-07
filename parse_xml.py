@@ -4,7 +4,11 @@ import os
 import glob
 import re
 from collections import Counter
-# from nrclex import NRCLex
+import nltk
+from nltk.corpus import wordnet as wn_nltk
+from nltk.corpus import sentiwordnet as swn
+from collections import defaultdict
+import wn
 
 # Map requested features to XML label names
 feature_map = {
@@ -33,27 +37,190 @@ feature_map = {
     'face_cheeks': 'cheeks',
 }
 
-from collections import defaultdict
-import re
+# Download required NLTK data
+nltk.download('wordnet')
+nltk.download('sentiwordnet')
 
-# Load NRC Emotion Lexicon
-emotion_lexicon = defaultdict(set)
+# Initialize WN
+wordnet = wn.Wordnet('oewn:2024')
 
-with open('NRC-Emotion-Lexicon-Wordlevel-v0.92.txt', 'r', encoding='utf-8') as f:
-    for line in f:
-        word, emotion, score = line.strip().split('\t')
-        if int(score) == 1:
-            emotion_lexicon[emotion].add(word)
+class EmotionAnalyzer:
+    def __init__(self):
+        # Load NRC Emotion Lexicon, create dictionary of emotions to words
+        self.emotion_lexicon = defaultdict(set)
+        with open('NRC-Emotion-Lexicon-Wordlevel-v0.92.txt', 'r', encoding='utf-8') as f:
+            for line in f:
+                word, emotion, score = line.strip().split('\t')
+                if int(score) == 1:
+                    self.emotion_lexicon[emotion].add(word)
+        
+        # Combine all emotional words into one flat set
+        self.all_emotion_words = set()
+        for words in self.emotion_lexicon.values():
+            self.all_emotion_words |= words
+    
+    def get_emotion_words(self, text):
+        """Get all emotion words in the text."""
+        words = re.findall(r'\b\w+\b', text.lower())
+        emotion_words = [w for w in words if w in self.all_emotion_words]
+        return ';'.join(emotion_words)
+    
+    def get_sentence_emotions(self, text):
+        """Get the emotional content of a sentence using NRC Emotion Lexicon."""
+        if not text or not isinstance(text, str):
+            return {}
+        
+        # Get words from text
+        words = re.findall(r'\b\w+\b', text.lower())
+        
+        # Count emotions
+        emotion_counts = defaultdict(int)
+        for word in words:
+            # Check which emotions this word is associated with
+            for emotion, word_set in self.emotion_lexicon.items():
+                if word in word_set:
+                    emotion_counts[emotion] += 1
+        
+        return emotion_counts
+    
+    def get_dominant_emotions(self, emotion_counts):
+        """Get the emotion(s) with the highest count."""
+        if not emotion_counts:
+            return ''
+        
+        max_count = max(emotion_counts.values())
+        if max_count == 0:
+            return ''
+        
+        dominant_emotions = [emotion for emotion, count in emotion_counts.items() if count == max_count]
+        dominant_emotions.sort()  # sort alphabetically
+        
+        return ';'.join(dominant_emotions)
+    
+    def get_nltk_emotion(self, word):
+        """Get emotion information using NLTK's WordNet/SentiWordNet."""
+        synsets = wn_nltk.synsets(word)
+        if not synsets:
+            return None
+        
+        # Get average sentiment scores across all synsets
+        pos_score = neg_score = obj_score = 0.0
+        count = 0
+        
+        for synset in synsets:
+            try:
+                if hasattr(synset, 'name') and callable(synset.name):
+                    senti_synset = swn.senti_synset(synset.name())
+                    if senti_synset:
+                        pos_score += senti_synset.pos_score()
+                        neg_score += senti_synset.neg_score()
+                        obj_score += senti_synset.obj_score()
+                        count += 1
+            except Exception as e:
+                print(f"Error in NLTK emotion processing for word '{word}': {e}")
+                continue
+        
+        if count > 0:
+            pos_score /= count
+            neg_score /= count
+            obj_score /= count
+            
+            # Only return sentiment if the word is not primarily objective
+            if obj_score < max(pos_score, neg_score):
+                return {
+                    'positive': pos_score,
+                    'negative': neg_score,
+                    'objective': obj_score
+                }
+        return None
+    
+    def get_wn_emotion(self, word):
+        """Get emotion information using WN package."""
+        try:
+            synsets = wordnet.synsets(word)
+            emotions = []
+            
+            for synset in synsets:
+                try:
+                    # Check hypernyms for emotion-related concepts
+                    for hyper in synset.hypernyms():
+                        try:
+                            hyper_def = hyper.definition()
+                            if isinstance(hyper_def, str) and ('emotion' in hyper_def or 'feeling' in hyper_def):
+                                for lemma in hyper.lemmas():
+                                    if hasattr(lemma, 'lemma') and callable(getattr(lemma, 'lemma')):
+                                        lemma_name = lemma.lemma()
+                                        if isinstance(lemma_name, str):
+                                            emotions.append(lemma_name)
+                        except Exception as e:
+                            print(f"Error processing hypernym for word '{word}': {e}")
+                            continue
+                    
+                    # Check definition for emotion words
+                    synset_def = synset.definition()
+                    if isinstance(synset_def, str):
+                        for emotion in ['joy', 'sadness', 'anger', 'fear', 'surprise', 'disgust']:
+                            if emotion in synset_def.lower():
+                                emotions.append(emotion)
+                except Exception as e:
+                    print(f"Error processing synset for word '{word}': {e}")
+                    continue
+            
+            return list(set(emotions)) if emotions else None
+        except Exception as e:
+            print(f"Error in WN emotion processing for word '{word}': {e}")
+            return None
+    
+    def analyze_text(self, text):
+        """Analyze emotions in text using both WordNet implementations."""
+        if not text or not isinstance(text, str):
+            return {}
+        
+        words = re.findall(r'\b\w+\b', text.lower())
+        analysis = {
+            'nrc_pairs': [],
+            'nltk_pairs': [],
+            'wn_pairs': []
+        }
+        
+        for word in words:
+            # Get NRC emotions
+            for emotion in self.emotion_lexicon:
+                if word in self.emotion_lexicon[emotion]:
+                    analysis['nrc_pairs'].append(f"{word}/{emotion}")
+            
+            # Get NLTK WordNet emotions - only include if not objective
+            nltk_scores = self.get_nltk_emotion(word)
+            if nltk_scores:
+                # Get the dominant non-objective sentiment
+                sentiments = [('positive', nltk_scores['positive']), 
+                            ('negative', nltk_scores['negative'])]
+                dominant = max(sentiments, key=lambda x: x[1])
+                if dominant[1] > 0:  # Only include if sentiment strength > 0
+                    analysis['nltk_pairs'].append(f"{word}/{dominant[0]}")
+            
+            # Get WN emotions
+            wn_emotions = self.get_wn_emotion(word)
+            if wn_emotions:
+                for emotion in wn_emotions:
+                    analysis['wn_pairs'].append(f"{word}/{emotion}")
+        
+        return analysis
 
-# Optional: combine all emotional words into one flat set
-all_emotion_words = set()
-for words in emotion_lexicon.values():
-    all_emotion_words |= words
+# Initialize the emotion analyzer
+emotion_analyzer = EmotionAnalyzer()
 
-def get_emotion_words(text):
-    words = re.findall(r'\b\w+\b', text.lower())
-    emotion_words = [w for w in words if w in all_emotion_words]
-    return ';'.join(emotion_words)
+def get_emotion_pairs(text):
+    """Get emotion word pairs from all three sources."""
+    if not text or not isinstance(text, str):
+        return '', '', ''
+    
+    analysis = emotion_analyzer.analyze_text(text)
+    return (
+        ';'.join(analysis['nrc_pairs']),
+        ';'.join(analysis['nltk_pairs']),
+        ';'.join(analysis['wn_pairs'])
+    )
 
 # Get all XML files in the xml_files directory
 xml_files = glob.glob('xml_files/*.xml')
@@ -65,8 +232,9 @@ if not xml_files:
 csv_file = 'xml_csvs/emotion_asl.csv'
 word_count_file = 'xml_csvs/english_word_counts.csv'
 
-# Initialize word counters
-word_counter = Counter()
+# Initialize counters
+word_counter = Counter()  # for English words
+asl_counter = Counter()   # for ASL gloss words
 face_counters = {
     'face_eye_brows': Counter(),
     'face_eye_gaze': Counter(),
@@ -84,10 +252,10 @@ def clean_phrase(phrase):
 
 with open(csv_file, 'w', newline='', encoding='utf-8') as f:
     writer = csv.writer(f)
-    # Create header with count columns
+    # Add separate columns for each emotion analysis method
     face_features = ['face_eye_brows', 'face_eye_gaze', 'face_eye_aperture', 'face_nose', 'face_mouth', 'face_cheeks']
     face_count_columns = [f'count_{feature}' for feature in face_features]
-    header = ['#', 'utterance_id', 'translation', 'emotion_words', 'asl_gloss', 'count_asl_gloss'] + list(feature_map.keys()) + face_count_columns
+    header = ['#', 'utterance_id', 'translation', 'nrc_emotions', 'nltk_emotions', 'wn_emotions', 'asl_gloss', 'count_asl_gloss'] + list(feature_map.keys()) + face_count_columns
     writer.writerow(header)
 
     for xml_file in xml_files:
@@ -96,7 +264,6 @@ with open(csv_file, 'w', newline='', encoding='utf-8') as f:
             tree = ET.parse(xml_file)
             root = tree.getroot()
 
-            # Get collection ID from the first COLLECTION element
             collection_id = ''
             collection_elem = root.find('.//COLLECTION')
             if collection_elem is not None:
@@ -106,12 +273,12 @@ with open(csv_file, 'w', newline='', encoding='utf-8') as f:
                 utterance_id = utterance.get('ID', '').strip("'")
                 translation_elem = utterance.find('TRANSLATION')
                 translation = ''
-                emotion_words = ''
+                nrc_pairs = ''
+                nltk_pairs = ''
+                wn_pairs = ''
                 if translation_elem is not None and translation_elem.text is not None:
-                    # Get the English translation
                     translation = translation_elem.text.strip("'")
-                    # Extract emotion words from the English translation
-                    emotion_words = get_emotion_words(translation)
+                    nrc_pairs, nltk_pairs, wn_pairs = get_emotion_pairs(translation)
                     
                     # Count words in translation
                     if translation.strip():
@@ -128,16 +295,16 @@ with open(csv_file, 'w', newline='', encoding='utf-8') as f:
                     for sign in manuals.findall('SIGN'):
                         label_elem = sign.find('LABEL')
                         if label_elem is not None and label_elem.text:
-                            # Clean the ASL gloss by removing #, +, (1h), (2h), and " characters
+                            # Clean the ASL gloss
                             label_text = label_elem.text.strip("'")
-                            # Remove the specified characters
-                            cleaned_label = re.sub(r'[#+"]', '', label_text)  # Remove #, +, and "
-                            cleaned_label = re.sub(r'\(1h\)', '', cleaned_label)  # Remove (1h)
-                            cleaned_label = re.sub(r'\(2h\)', '', cleaned_label)  # Remove (2h)
-                            # Clean up any extra whitespace
+                            cleaned_label = re.sub(r'[#+"]', '', label_text)
+                            cleaned_label = re.sub(r'\(1h\)', '', cleaned_label)
+                            cleaned_label = re.sub(r'\(2h\)', '', cleaned_label)
                             cleaned_label = cleaned_label.strip()
-                            if cleaned_label:  # Only add non-empty labels
+                            if cleaned_label:
                                 labels.append(cleaned_label)
+                                # Count ASL gloss words
+                                asl_counter[cleaned_label] += 1
 
                 nonmanuals = utterance.find('NON_MANUALS')
                 feature_values = []
@@ -189,8 +356,8 @@ with open(csv_file, 'w', newline='', encoding='utf-8') as f:
                             if cleaned_phrase:
                                 head_counter[cleaned_phrase] += 1
                 
-                # Combine all data
-                row_data = [collection_id, utterance_id, translation, emotion_words, ';'.join(labels), asl_gloss_count] + feature_values + face_counts
+                # Add emotion pairs to row_data
+                row_data = [collection_id, utterance_id, translation, nrc_pairs, nltk_pairs, wn_pairs, ';'.join(labels), asl_gloss_count] + feature_values + face_counts
                 writer.writerow(row_data)
 
         except Exception as e:
@@ -210,9 +377,14 @@ with open(word_count_file, 'w', newline='', encoding='utf-8') as f:
     for word, count in word_counts:
         writer.writerow([word, count])
 
-print(f"English word count CSV '{word_count_file}' created.")
-print(f"Total unique English words: {len(word_counts)}")
-print(f"Total English word occurrences: {sum(count for _, count in word_counts)}")
+# ASL gloss word counts
+asl_count_file = 'xml_csvs/asl_gloss_word_counts.csv'
+asl_counts = asl_counter.most_common()
+with open(asl_count_file, 'w', newline='', encoding='utf-8') as f:
+    writer = csv.writer(f)
+    writer.writerow(['asl_gloss', 'count'])
+    for word, count in asl_counts:
+        writer.writerow([word, count])
 
 # Face feature word counts
 for feature, counter in face_counters.items():
@@ -223,9 +395,6 @@ for feature, counter in face_counters.items():
         writer.writerow(['word', 'count'])
         for word, count in feature_counts:
             writer.writerow([word, count])
-    print(f"{feature} word count CSV '{feature_file}' created.")
-    print(f"  Total unique words: {len(feature_counts)}")
-    print(f"  Total occurrences: {sum(count for _, count in feature_counts)}")
 
 # Face feature word counts (combined)
 face_file = 'xml_csvs/face_word_counts.csv'
@@ -236,10 +405,6 @@ with open(face_file, 'w', newline='', encoding='utf-8') as f:
     for word, count in face_counts:
         writer.writerow([word, count])
 
-print(f"Face word count CSV '{face_file}' created.")
-print(f"Total unique face words: {len(face_counts)}")
-print(f"Total face word occurrences: {sum(count for _, count in face_counts)}")
-
 # Head feature word counts (combined)
 head_file = 'xml_csvs/head_word_counts.csv'
 head_counts = head_counter.most_common()
@@ -248,11 +413,3 @@ with open(head_file, 'w', newline='', encoding='utf-8') as f:
     writer.writerow(['word', 'count'])
     for word, count in head_counts:
         writer.writerow([word, count])
-
-print(f"Head word count CSV '{head_file}' created.")
-print(f"Total unique head words: {len(head_counts)}")
-print(f"Total head word occurrences: {sum(count for _, count in head_counts)}")
-
-print("\nTop 10 most frequent English words:")
-for rank, (word, count) in enumerate(word_counts[:10], 1):
-    print(f"  {rank}. {word}: {count}") 
