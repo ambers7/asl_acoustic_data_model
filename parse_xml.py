@@ -3,10 +3,8 @@ import csv
 import os
 import glob
 import re
-<<<<<<< HEAD
 from collections import defaultdict, Counter
 # from nrclex import NRCLex
-=======
 from collections import Counter
 import nltk
 from nltk.corpus import wordnet as wn_nltk
@@ -15,7 +13,6 @@ from collections import defaultdict
 import wn
 import torch
 from transformers import pipeline
->>>>>>> 077f04e60220c53d2763d551de31fb4c1a8213d8
 
 # Map requested features to XML label names
 feature_map = {
@@ -44,7 +41,6 @@ feature_map = {
     'face_cheeks': 'cheeks',
 }
 
-<<<<<<< HEAD
 # Define the eyebrow positions we want to track
 eyebrow_positions = [
     'raised',
@@ -80,11 +76,9 @@ def get_overlapping_signs(eyebrow_start, eyebrow_end, signs):
             label = sign.find('LABEL').text.strip("'")
             overlapping.append(label)
     return overlapping
-=======
 # Download required NLTK data
 nltk.download('wordnet')
 nltk.download('sentiwordnet')
->>>>>>> 077f04e60220c53d2763d551de31fb4c1a8213d8
 
 # Initialize WN
 wordnet = wn.Wordnet('oewn:2024')
@@ -490,7 +484,6 @@ with open(head_file, 'w', newline='', encoding='utf-8') as f:
     writer.writerow(['word', 'count'])
     for word, count in head_counts:
         writer.writerow([word, count])
-<<<<<<< HEAD
 
 print(f"Head word count CSV '{head_file}' created.")
 print(f"Total unique head words: {len(head_counts)}")
@@ -584,5 +577,3 @@ with open(output_file, 'w', newline='', encoding='utf-8') as f:
 
 print(f"\nCreated eyebrow-gloss co-occurrence CSV file: {output_file}")
 print(f"Total unique glosses analyzed: {len(gloss_counts)}")
-=======
->>>>>>> 077f04e60220c53d2763d551de31fb4c1a8213d8
