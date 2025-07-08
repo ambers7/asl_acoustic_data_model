@@ -1,0 +1,4 @@
+torch>=2.0.0
+transformers>=4.30.0
+nltk>=3.8.1
+wn>=0.0.23 
