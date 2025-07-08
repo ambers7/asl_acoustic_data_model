@@ -1,0 +1,7 @@
+Happy, 
+sad, 
+angry, 
+terrified, 
+disgusted, 
+surprise, 
+
