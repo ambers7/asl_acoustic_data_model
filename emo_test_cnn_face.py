@@ -165,31 +165,6 @@ print_and_log("\nTraining sessions: " + ", ".join(train_sessions))
 print_and_log("Testing sessions: " + ", ".join(test_sessions))
 print_and_log("="*50)
 
-# label_dic = {'CS':0,
-#  'INTENSE':1,
-#  'MM':2,
-#  'PS':3,
-#  'PUFF':4,
-#  'TH':5,
-#  'angry':6,
-#  'disgusted':7,
-#  'happy':8,
-#  'sad':9,
-#  'surprised':10,
-#  'terrified':11}
-
-# label_dic_reverse = {0:'CS',
-# 1:'INTENSE',
-# 2: 'MM',
-# 3: 'PS',
-# 4: 'PUFF',
-# 5: 'TH',
-# 6: 'angry',
-# 7: 'disgusted',
-# 8: 'happy',
-# 9: 'sad',
-# 10: 'surprised',
-# 11: 'terrified'}
 
 def save_checkpoint(model, optimizer, epoch, best_acc=0.0, filename= best_save_path + "best_checkpoint.pth"):
     """Save model, optimizer, epoch number, and best accuracy."""
