@@ -118,9 +118,9 @@ print_and_log(f"Experiment folder: {best_save_path}")
 print_and_log("="*50)
 
 # Define our categories
-lst = ["Happy", "Sad", "Angry", "Terrified", "Disgusted", "Surprise",  # Emotions (6)
-       "raise eyebrow", "furrowed eyebrow", "shake head side to side with lowered corners of the mouth and eyebrows",  # Grammar (3)
-       "Puffed", "OO", "MM", "CHA", "TH"]  # Mouth morphemes (5)
+lst = ["HAPPY", "SAD", "ANGRY", "TERRIFIED", "DISGUSTED", "SURPRISED",  # Emotions (6)
+       "raise eyebrows", "furrowed eyebrows", "shake head side to side with lowered corners of the mouth and eyebrows",  # Grammar (3)
+       "puffed", "oo", "mm", "CHA", "TH"]  # Mouth morphemes (5)
 
 # Create label mappings
 label_dic = {value: index for index, value in enumerate(lst)}
