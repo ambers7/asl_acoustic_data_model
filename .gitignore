@@ -7,6 +7,8 @@
 *.tiff
 *.npy
 *.pkl
+*.ipynb
+
 accel_*.txt
 imu_*.txt
 gnd_truth.txt

@@ -40,7 +40,7 @@ detector = vision.PoseLandmarker.create_from_options(options)
 # STEP 3: Load the input image.
 # image = mp.Image.create_from_file("image.jpg")
 input_vid_path = "videos\\1-Introduction-SD.mov"
-output_vid_path = "output_vids\\position_landmarks.mp4"
+output_vid_path = "output_vids/position_landmarks.mp4"
 
 csv_file = open("pose_landmarks.csv", mode="w", newline="")
 csv_writer = csv.writer(csv_file)
@@ -60,12 +60,12 @@ frame_width  = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
 frame_height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
 frame_idx = 0
 
-# out = cv2.VideoWriter(
-#     output_vid_path,
-#     cv2.VideoWriter_fourcc(*'mp4v'),  # Use 'XVID' for .avi
-#     fps,
-#     (frame_width, frame_height)
-# )
+out = cv2.VideoWriter(
+    output_vid_path,
+    cv2.VideoWriter_fourcc(*'mp4v'),  # Use 'XVID' for .avi
+    fps,
+    (frame_width, frame_height)
+)
 
 while cap.isOpened():
     success, frame = cap.read()
@@ -78,11 +78,11 @@ while cap.isOpened():
     result = detector.detect_for_video(mp_image, timestamp_ms)
 
     # Draw landmarks on the frame
-    # annotated = draw_landmarks_on_frame(frame, result)
+    annotated = draw_landmarks_on_frame(frame, result)
 
     # # Write the annotated frame to output video
-    # annotated_bgr = cv2.cvtColor(annotated, cv2.COLOR_RGB2BGR)
-    # out.write(annotated_bgr)
+    annotated_bgr = cv2.cvtColor(annotated, cv2.COLOR_RGB2BGR)
+    out.write(annotated_bgr)
 
     if result.pose_landmarks:
         for idx, lm in enumerate(result.pose_landmarks[0]):
@@ -101,7 +101,7 @@ while cap.isOpened():
 
 
 cap.release()
-# out.release()
+out.release()
 csv_file.close()
 
 
