@@ -30,7 +30,7 @@ def draw_landmarks_on_frame(rgb_image, detection_result):
 
 
 # STEP 2: Create an PoseLandmarker object.
-base_options = python.BaseOptions(model_asset_path='pose_landmarker_full.task')
+base_options = python.BaseOptions(model_asset_path='mediapipe_models/pose_landmarker_full.task')
 options = vision.PoseLandmarkerOptions(
     base_options=base_options,
     running_mode=vision.RunningMode.VIDEO,
@@ -40,7 +40,7 @@ detector = vision.PoseLandmarker.create_from_options(options)
 # STEP 3: Load the input image.
 # image = mp.Image.create_from_file("image.jpg")
 input_vid_path = "videos\\1-Introduction-SD.mov"
-output_vid_path = "output_vids\\1-Introduction-SD-output.mp4"
+output_vid_path = "output_vids\\position_landmarks.mp4"
 
 csv_file = open("pose_landmarks.csv", mode="w", newline="")
 csv_writer = csv.writer(csv_file)
