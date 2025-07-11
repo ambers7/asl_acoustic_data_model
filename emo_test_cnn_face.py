@@ -117,8 +117,8 @@ print_and_log("Training script started")
 print_and_log(f"Experiment folder: {best_save_path}")
 print_and_log("="*50)
 
-# Define our categories
-lst = ["HAPPY", "SAD", "ANGRY", "TERRIFIED", "DISGUSTED", "SURPRISED",  # Emotions (6)
+# Define our categories (only grammar and mouth morphemes)
+lst = [
        "raise eyebrows", "furrowed eyebrows", "shake head side to side with lowered corners of the mouth and eyebrows",  # Grammar (3)
        "puffed", "oo", "mm", "CHA", "TH"]  # Mouth morphemes (5)
 
@@ -132,9 +132,8 @@ print_and_log("="*50)
 print_and_log("Model Configuration:")
 print_and_log(f"Number of classes: {class_num}")
 print_and_log("\nClass categories:")
-print_and_log("Emotions (0-5): " + ", ".join(lst[0:6]))
-print_and_log("Grammar (6-8): " + ", ".join(lst[6:9]))
-print_and_log("Mouth morphemes (9-13): " + ", ".join(lst[9:14]))
+print_and_log("Grammar (0-2): " + ", ".join(lst[0:3]))
+print_and_log("Mouth morphemes (3-7): " + ", ".join(lst[3:8]))
 print_and_log("="*50)
 
 dp = dataset_folder+'/dataset/'
@@ -143,13 +142,8 @@ train_sessions = [i.split('_')[1] for i in tmp_dp if i.find('session') == 0]
 
 data_path = dp + 'session_'
 
-# Define session groups
-emotion_sessions = ['0101', '0201', '0301']  # Sessions 1-3 for emotions
-grammar_sessions = ['0401', '0501', '0601']  # Sessions 4-6 for grammar
-mouth_sessions = ['0701', '0801', '0901']    # Sessions 7-9 for mouth morphemes
-
 # Define test sessions (one from each category)
-test_sessions = ['0301', '0601', '0901']
+test_sessions = ['0601', '0901']  # One from grammar, one from mouth morphemes
 
 # Remove test sessions from training sessions
 for test_sess in test_sessions:
@@ -158,11 +152,9 @@ for test_sess in test_sessions:
 
 print_and_log("="*50)
 print_and_log("Session Configuration:")
-print_and_log(f"Emotion sessions: {', '.join(emotion_sessions)} (test: 0301)")
-print_and_log(f"Grammar sessions: {', '.join(grammar_sessions)} (test: 0601)")
-print_and_log(f"Mouth sessions: {', '.join(mouth_sessions)} (test: 0901)")
-print_and_log("\nTraining sessions: " + ", ".join(train_sessions))
-print_and_log("Testing sessions: " + ", ".join(test_sessions))
+print_and_log("Note: Emotion data will be filtered out from all sessions")
+print_and_log(f"Test sessions: {', '.join(test_sessions)} (0601 for grammar, 0901 for mouth)")
+print_and_log(f"Training sessions: {', '.join(train_sessions)}")
 print_and_log("="*50)
 
 
@@ -465,13 +457,22 @@ def read_from_folder(session_num, data_path, is_train=False):
     loaded_gt = []
     data_pairs = []
     n_bad = 0
+    n_skipped_emotions = 0
     bad_signal_remove_length = 5
+    
+    # Define emotion categories to skip
+    emotion_categories = ["HAPPY", "SAD", "ANGRY", "TERRIFIED", "DISGUSTED", "SURPRISED"]
     
     for i in range(0, len(file_echo_diff_list)):
         file = file_echo_diff_list[i]
         # Get the ground truth from the file name
         gnd = int(file.split('.')[0].split('_')[2])
         truth = gt[gnd].split(';')[3]  # Get the actual label from ground truth file
+
+        # Skip if this is an emotion label
+        if truth in emotion_categories:
+            n_skipped_emotions += 1
+            continue
 
         # Load imu
         File_data = np.loadtxt(file_imus+"/"+file_imus_list[i], dtype=str, delimiter=" ") 
@@ -498,7 +499,9 @@ def read_from_folder(session_num, data_path, is_train=False):
             n_bad += 1
 
     if n_bad:
-        print('     %d bad data pieces' % n_bad)
+        print_and_log('     %d bad data pieces' % n_bad)
+    if n_skipped_emotions:
+        print_and_log('     %d emotion samples skipped' % n_skipped_emotions)
 
     return data_pairs, loaded_gt
 
@@ -1062,148 +1065,195 @@ for i, (input_arr_raw, target) in enumerate(test_loader):
     break
 
 
-train_losses = []
-val_losses = []
-for epoch in range(start_epoch, num_epochs):
-    model.train()
-    running_loss = 0.0
-    correct = 0
-    total = 0
-    model.train()
-    running_loss = 0.0
+# Define test cases
+test_cases = [
+    ['0601', '0901'],  # First test case
+    ['1001'],          # Second test case
+    ['1101'],          # Third test case
+    ['1201'],          # Fourth test case
+    ['1301']           # Fifth test case
+]
 
-    for i, (input_arr_raw, target) in enumerate(train_loader):
+print_and_log("="*50)
+print_and_log("Testing Configuration:")
+print_and_log("Note: Emotion data will be filtered out from all sessions")
+print_and_log("\nTest cases:")
+for i, test_sessions in enumerate(test_cases):
+    print_and_log(f"Case {i+1}: {', '.join(test_sessions)}")
 
-        optimizer.zero_grad()
+# Function to get training sessions for a test case
+def get_train_sessions(test_sessions):
+    all_sessions = [i.split('_')[1] for i in tmp_dp if i.find('session') == 0]
+    return [s for s in all_sessions if s not in test_sessions]
 
-        input_arr = input_arr_raw[0][:,input_channel_slice,:,:]
-        input_imu = input_arr_raw[1][:,:,:,:]
+# Create results directory for each test case
+for i, test_sessions in enumerate(test_cases):
+    case_dir = os.path.join(best_save_path, f"case_{i+1}")
+    ensure_folder_exists(case_dir)
 
-        input_arr = Tensor(input_arr).to(device)
-        input_imu = Tensor(input_imu).to(device)
-        labels = torch.tensor([label_dic[x] for x in target], dtype=torch.long).to(device)
-        
-        if fusion == True:
-                outputs = model(input_imu, input_arr)
-        else:
-            if imu_1d == True:
-                outputs = model(input_imu)
-            else:
-                outputs = model(input_arr)
-        #print(outputs.shape, labels, outputs)
-        loss = criterion(outputs, labels)
-        loss.backward()
-        optimizer.step()
-
-        running_loss += loss.item()
-        _, predicted = torch.max(outputs, 1)
-        total += labels.size(0)
-        correct += (predicted == labels).sum().item()
+# Main training loop for each test case
+all_results = []
+for case_idx, test_sessions in enumerate(test_cases):
+    case_dir = os.path.join(best_save_path, f"case_{case_idx+1}")
+    print_and_log(f"\n{'='*50}")
+    print_and_log(f"Training Case {case_idx+1}: Testing on {', '.join(test_sessions)}")
     
-    print_and_log(f"Epoch [{epoch+1}/{num_epochs}], Loss: {running_loss/len(train_loader):.4f}, Accuracy: {100 * correct/total:.2f}%")
-
-    if epoch % 3 == 0:
-        model.eval()
-        test_correct = 0
-        test_total = 0
-
-        predictions = []
-        true_labels = []
-        #best_save_path = "/data3/hyunchul/asl/Headset_silentspeech1/dl_model/results_emo/"
-        with torch.no_grad():
-            for i, (input_arr_raw, target) in enumerate(test_loader):
-
-                input_arr = input_arr_raw[0][:,input_channel_slice,:,:]
-                input_imu = input_arr_raw[1][:,:,:,:]
-
-                input_arr = Tensor(input_arr).to(device)
-                input_imu = Tensor(input_imu).to(device)
-                labels = torch.tensor([label_dic[x] for x in target], dtype=torch.long).to(device)
+    # Get training sessions for this case
+    train_sessions = get_train_sessions(test_sessions)
+    print_and_log(f"Training on sessions: {', '.join(train_sessions)}")
+    
+    # Load training data
+    train_data = []
+    print_and_log('Loading training data...')
+    for session in train_sessions:
+        print_and_log(f' Loading from {session}')
+        this_train_data, _ = read_from_folder(session, data_path, is_train=True)
+        train_data.extend(this_train_data)
+    
+    # Load test data
+    test_data = []
+    print_and_log('Loading testing data...')
+    for session in test_sessions:
+        print_and_log(f' Loading from {session}')
+        this_test_data, _ = read_from_folder(session, data_path, is_train=False)
+        test_data.extend(this_test_data)
+    
+    # Initialize new model for this case
+    if fusion:
+        if imu_1d:
+            model = Imu1dImage2dModel(num_classes=class_num)
+            model.resnet2.conv1 = nn.Conv2d(input_channel, 64, kernel_size=3, stride=1, padding=1, bias=False)
+        else:
+            model = DualResNetClassifier(num_classes=class_num)
+            model.resnet1.conv1 = nn.Conv2d(1, 64, kernel_size=3, stride=1, padding=1, bias=False)
+            model.resnet2.conv1 = nn.Conv2d(input_channel, 64, kernel_size=3, stride=1, padding=1, bias=False)
+    else:
+        if imu_1d:
+            model = Imu1dModel(num_classes=class_num)
+        else:
+            model = resnet18(num_classes=class_num)
+            model.conv1 = nn.Conv2d(input_channel, 64, kernel_size=7, stride=2, padding=3, bias=False)
+    
+    model.to(device)
+    optimizer = optim.Adam(model.parameters(), lr=0.001)
+    criterion = nn.CrossEntropyLoss()
+    
+    # Create data loaders
+    data_splitter = DataSplitter(train_data, test_data, batch_size, 0)
+    train_loader = data_splitter.train_loader
+    test_loader = data_splitter.test_loader
+    
+    # Training loop for this case
+    best_val_acc = 0.0
+    train_losses = []
+    val_losses = []
+    
+    for epoch in range(num_epochs):
+        model.train()
+        running_loss = 0.0
+        correct = 0
+        total = 0
+        
+        # Training step
+        for i, (input_arr_raw, target) in enumerate(train_loader):
+            input_arr = input_arr_raw[0][:,input_channel_slice,:,:]
+            input_imu = input_arr_raw[1][:,:,:,:]
             
-                if fusion == True:
-                    outputs = model(input_imu, input_arr)
+            if not isinstance(input_arr, torch.Tensor):
+                input_arr = Tensor(input_arr).to(device)
+            else:
+                input_arr = input_arr.to(device)
+            if not isinstance(input_imu, torch.Tensor):
+                input_imu = Tensor(input_imu).to(device)
+            else:
+                input_imu = input_imu.to(device)
+                
+            labels = torch.tensor([label_dic[x] for x in target], dtype=torch.long).to(device)
+            
+            optimizer.zero_grad()
+            
+            if fusion:
+                outputs = model(input_imu, input_arr)
+            else:
+                if imu_1d:
+                    outputs = model(input_imu)
                 else:
-                    if imu_1d == True:
-                        outputs = model(input_imu)
-                    else:
-                        outputs = model(input_arr)
-                    
-                _, predicted = torch.max(outputs, 1)
-                test_total += labels.size(0)
-                test_correct += (predicted == labels).sum().item()
-                
-                predictions.extend(predicted.cpu().numpy())  
-                true_labels.extend(labels.cpu().numpy())  
-
-            test_acc = 100 * test_correct / test_total
-            #print(val_correct,val_total)
-                
+                    outputs = model(input_arr)
+            
+            loss = criterion(outputs, labels)
+            loss.backward()
+            optimizer.step()
+            
+            running_loss += loss.item()
+            _, predicted = torch.max(outputs.data, 1)
+            total += labels.size(0)
+            correct += (predicted == labels).sum().item()
+        
+        # Validation step
+        if epoch % 3 == 0:
+            test_acc, results_df = test_model(model, test_loader, device, f"Case_{case_idx+1}")
+            
             if test_acc > best_val_acc:
-                # Store predictions and actual labels
-
                 best_val_acc = test_acc
-                df = pd.DataFrame({"True Label": true_labels, "Predicted Label": predictions})
-                df.to_csv(best_save_path+"test_results.csv", index=False)
-                torch.save(model.state_dict(), best_save_path+"best_model.pth")
-                save_checkpoint(model, optimizer, epoch, best_acc=best_val_acc)
-                print_and_log(f"🔥 Best model saved with Test Accuracy: {best_val_acc:.2f}%")
-                save_cm_figure(df["True Label"],df["Predicted Label"], best_save_path, best_val_acc, lst)
+                # Save model and results
+                torch.save(model.state_dict(), os.path.join(case_dir, "best_model.pth"))
+                save_checkpoint(model, optimizer, epoch, best_acc=best_val_acc, 
+                              filename=os.path.join(case_dir, "best_checkpoint.pth"))
+                results_df.to_csv(os.path.join(case_dir, "test_results.csv"), index=False)
+                
+                # Save confusion matrix
+                save_cm_figure(
+                    results_df["True Label"],
+                    results_df["Predicted Label"],
+                    os.path.join(case_dir, "confusion_matrix.png"),
+                    best_val_acc,
+                    lst
+                )
+                
+            print_and_log(f"Epoch [{epoch+1}/{num_epochs}], Loss: {running_loss/len(train_loader):.4f}, "
+                         f"Train Accuracy: {100 * correct/total:.2f}%, "
+                         f"Test Accuracy: {test_acc:.2f}%, Best: {best_val_acc:.2f}%")
+    
+    # Save final results for this case
+    case_results = {
+        'case': case_idx + 1,
+        'test_sessions': test_sessions,
+        'best_accuracy': best_val_acc,
+        'results_path': case_dir
+    }
+    all_results.append(case_results)
+    
+    # Plot loss curves for this case
+    plt.figure()
+    plt.plot(train_losses, label='Training Loss')
+    plt.plot(val_losses, label='Validation Loss')
+    plt.xlabel('Epoch')
+    plt.ylabel('Loss')
+    plt.legend()
+    plt.title(f'Training and Validation Loss Curves - Case {case_idx+1}')
+    plt.savefig(os.path.join(case_dir, "loss_curve.png"), dpi=300, bbox_inches="tight")
+    plt.close()
 
-            print_and_log(f"Epoch [{epoch+1}/{num_epochs}], Loss: {running_loss/len(train_loader):.4f}, Accuracy: {100 * correct/total:.2f}%, Test Accuracy: {test_acc:.2f}%, , Best Accuracy: {best_val_acc:.2f}%")
-
-# calculate train loss and validation loss
-    avg_train_loss = running_loss / len(train_loader)
-    train_losses.append(avg_train_loss)
-
-    if epoch % 3 == 0:
-        model.eval()
-        val_running_loss = 0.0
-        with torch.no_grad():
-            for i, (input_arr_raw, target) in enumerate(test_loader):
-                input_arr = input_arr_raw[0][:,input_channel_slice,:,:]
-                input_imu = input_arr_raw[1][:,:,:,:]
-                if not isinstance(input_arr, torch.Tensor):
-                    input_arr = Tensor(input_arr).to(device) #torch.tensor(input_arr, dtype=torch.float32).to(device)
-                else:
-                    input_arr = input_arr.to(device)
-                if not isinstance(input_imu, torch.Tensor):
-                    input_imu = Tensor(input_imu).to(device) #torch.tensor(input_imu, dtype=torch.float32).to(device)
-                else:
-                    input_imu = input_imu.to(device)
-                labels = torch.tensor([label_dic[x] for x in target], dtype=torch.long).to(device)
-                if fusion == True:
-                    outputs = model(input_imu, input_arr)
-                else:
-                    if imu_1d == True:
-                        outputs = model(input_imu)
-                    else:
-                        outputs = model(input_arr)
-                val_loss = criterion(outputs, labels)
-                val_running_loss += val_loss.item()
-            avg_val_loss = val_running_loss / len(test_loader)
-            val_losses.append(avg_val_loss)
-
-
-# plot loss curves
-
-plt.figure()
-plt.plot(train_losses, label='Training Loss')
-plt.plot(val_losses, label='Validation Loss')
-plt.xlabel('Epoch')
-plt.ylabel('Loss')
-plt.legend()
-plt.title('Training and Validation Loss Curves')
-plt.savefig(best_save_path + "loss_curve.png", dpi=300, bbox_inches="tight")
-plt.close()
-
-# Save final model regardless of performance
-torch.save(model.state_dict(), best_save_path+"final_model.pth")
-save_checkpoint(model, optimizer, num_epochs-1, best_acc=best_val_acc, filename= best_save_path+"final_checkpoint.pth")
-print_and_log(f"✅ Final model saved at epoch {num_epochs}")
-
-# Log training completion
+# Save overall results summary
+print_and_log("\n" + "="*50)
+print_and_log("Overall Results Summary:")
+for result in all_results:
+    print_and_log(f"Case {result['case']} (Testing on {', '.join(result['test_sessions'])}): "
+                 f"Best Accuracy = {result['best_accuracy']:.2f}%")
 print_and_log("="*50)
-print_and_log("Training completed successfully!")
-print_and_log(f"Best validation accuracy: {best_val_acc:.2f}%")
-print_and_log(f"Final model and checkpoint saved in: {best_save_path}")
-print_and_log("="*50)
+
+# Create combined confusion matrix from all results
+all_predictions = []
+all_true_labels = []
+for result in all_results:
+    results_df = pd.read_csv(os.path.join(result['results_path'], "test_results.csv"))
+    all_predictions.extend(results_df["Predicted Label"])
+    all_true_labels.extend(results_df["True Label"])
+
+save_cm_figure(
+    all_true_labels,
+    all_predictions,
+    os.path.join(best_save_path, "confusion_matrix_all_cases.png"),
+    sum([r['best_accuracy'] for r in all_results]) / len(all_results),
+    lst
+)
