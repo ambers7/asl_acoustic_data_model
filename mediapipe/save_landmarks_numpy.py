@@ -3,6 +3,37 @@ import cv2
 import mediapipe as mp
 import os
 import pandas as pd
+import tensorflow as tf
+
+# === GPU Configuration ===
+def setup_gpu():
+    """Configure GPU settings for optimal performance"""
+    try:
+        # List available GPUs
+        gpus = tf.config.list_physical_devices('GPU')
+        if not gpus:
+            print("No GPU devices found. Running on CPU.")
+            return False
+
+        print("\nAvailable GPUs:")
+        for i, gpu in enumerate(gpus):
+            print(f"GPU {i}: {gpu.name}")
+
+        # Enable memory growth to avoid taking all GPU memory
+        for gpu in gpus:
+            tf.config.experimental.set_memory_growth(gpu, True)
+        
+        # Configure CUDA for OpenCV
+        cv2.cuda.setDevice(0)  # Use first GPU
+        if cv2.cuda.getCudaEnabledDeviceCount() > 0:
+            print("OpenCV CUDA acceleration enabled")
+            return True
+            
+        return False
+    except Exception as e:
+        print(f"Error configuring GPU: {e}")
+        print("Falling back to CPU")
+        return False
 
 # === MediaPipe setup ===
 mp_holistic = mp.solutions.holistic
@@ -10,7 +41,7 @@ mp_holistic = mp.solutions.holistic
 # === Paths ===
 input_video_path = "mediapipe/videos/1-Introduction-SD.mov"
 output_dir = "mediapipe/numpy_data"
-utterance_map_path = "parsing/xml_csvs/frame_utterance_map.csv"  # Updated path
+utterance_map_path = "parsing/xml_csvs/frame_utterance_map.csv"
 os.makedirs(output_dir, exist_ok=True)
 
 def load_utterance_data():
@@ -33,8 +64,29 @@ def load_utterance_data():
         print("Looking for file:", os.path.abspath(utterance_map_path))
         return None
 
+def process_frame_gpu(frame):
+    """Process a single frame using GPU acceleration if available"""
+    if cv2.cuda.getCudaEnabledDeviceCount() > 0:
+        # Upload frame to GPU
+        gpu_frame = cv2.cuda_GpuMat()
+        gpu_frame.upload(frame)
+        
+        # Convert to RGB on GPU
+        gpu_rgb = cv2.cuda.cvtColor(gpu_frame, cv2.COLOR_BGR2RGB)
+        
+        # Download result back to CPU (MediaPipe requires CPU input)
+        rgb = gpu_rgb.download()
+    else:
+        # Fallback to CPU processing
+        rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+    
+    return rgb
+
 def process_video():
     """Process video and save landmarks as numpy arrays"""
+    # Configure GPU
+    using_gpu = setup_gpu()
+    
     # Load utterance data first
     utterance_df = load_utterance_data()
     
@@ -47,17 +99,19 @@ def process_video():
     # Get video info
     total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
     fps = cap.get(cv2.CAP_PROP_FPS)
+    print(f"\nProcessing video with {total_frames} frames at {fps} FPS")
+    print(f"GPU acceleration: {'Enabled' if using_gpu else 'Disabled'}")
 
-    # Initialize MediaPipe
+    # Initialize MediaPipe with performance settings
     print("\nInitializing MediaPipe Holistic...")
     holistic = mp_holistic.Holistic(
-        static_image_mode=True,
-        model_complexity=0,
-        smooth_landmarks=False,
+        static_image_mode=False,  # Enable tracking between frames
+        model_complexity=1,       # Balance between speed and accuracy
+        smooth_landmarks=True,    # Temporal smoothing
         enable_segmentation=False,
-        refine_face_landmarks=False,
-        min_detection_confidence=0.3,
-        min_tracking_confidence=0.3
+        refine_face_landmarks=True,
+        min_detection_confidence=0.5,
+        min_tracking_confidence=0.5
     )
 
     # Create a structured array to store all frame data
@@ -209,18 +263,16 @@ def process_video():
     # Fill in utterance data if available
     if utterance_df is not None:
         print("\nProcessing utterance data...")
-        debug_count = 0  # Counter for debug printing
+        debug_count = 0
         for _, row in utterance_df.iterrows():
             frame = row['frame']
             if frame < total_frames:
-                # Convert all values to strings to avoid type mismatches
                 frame_data[frame]['file_number'] = str(row.get('#', ''))
                 frame_data[frame]['utterance_id'] = str(row.get('utterance_id', ''))
                 frame_data[frame]['manual_signs'] = str(row.get('manual_signs', ''))
                 frame_data[frame]['non_manual_signs'] = str(row.get('non_manual_signs', ''))
                 
-                # Debug print for the first few frames with data
-                if debug_count < 5:  # Print first 5 entries
+                if debug_count < 5:
                     print(f"\nFrame {frame} utterance data:")
                     print(f"Number: {frame_data[frame]['file_number']}")
                     print(f"ID: {frame_data[frame]['utterance_id']}")
@@ -231,15 +283,20 @@ def process_video():
     # Process frames for landmarks
     print("\nProcessing video frames for landmarks...")
     frame_idx = 0
+    
+    # Create a CUDA stream if GPU is available
+    if using_gpu:
+        stream = cv2.cuda.Stream()
+    
     while True:
         ret, frame = cap.read()
         if not ret:
             break
             
-        # Convert to RGB
-        rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+        # Process frame with GPU acceleration if available
+        rgb = process_frame_gpu(frame)
         
-        # Process frame
+        # Process frame with MediaPipe
         results = holistic.process(rgb)
         
         # Store pose landmarks
@@ -319,6 +376,9 @@ def process_video():
     # Cleanup
     cap.release()
     holistic.close()
+    if using_gpu:
+        cv2.cuda.streamDestroy(stream)
+        cv2.cuda.resetDevice()
 
 if __name__ == '__main__':
     process_video() 
