@@ -267,10 +267,10 @@ def process_video():
         for _, row in utterance_df.iterrows():
             frame = row['frame']
             if frame < total_frames:
-                frame_data[frame]['file_number'] = str(row.get('#', ''))
-                frame_data[frame]['utterance_id'] = str(row.get('utterance_id', ''))
-                frame_data[frame]['manual_signs'] = str(row.get('manual_signs', ''))
-                frame_data[frame]['non_manual_signs'] = str(row.get('non_manual_signs', ''))
+                frame_data[frame]['file_number'] = str(row['file_number'])  # Changed from row.get('#', '')
+                frame_data[frame]['utterance_id'] = str(row['utterance_id'])
+                frame_data[frame]['manual_signs'] = str(row['manual_signs'])
+                frame_data[frame]['non_manual_signs'] = str(row['non_manual_signs'])
                 
                 if debug_count < 5:
                     print(f"\nFrame {frame} utterance data:")
