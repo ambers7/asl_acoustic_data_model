@@ -1,12 +1,3 @@
-word,count
-raised,1386
-lowered,774
-slightly lowered,643
-slightly raised,614
-raised-furrowed,481
-further raised,351
-further lowered,236
-right raised/left furrowed,10
-left raised/right furrowed,5
-left raised/right lowered,3
-further raised-furrowed,1
+version https://git-lfs.github.com/spec/v1
+oid sha256:85a5154f4ac82a80b30fc251fb140f5d07ed1c457ec42679413489983cce4ca9
+size 248

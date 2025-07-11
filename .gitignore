@@ -8,6 +8,8 @@
 *.npy
 *.pkl
 *.ipynb
+mediapipe/mediapipe_csvs/1-Introduction-SD/
+mediapipe/output_vids/*.mp4
 
 accel_*.txt
 imu_*.txt

@@ -1,26 +1,3 @@
-word,count
-slightly right,2074
-slightly left,1477
-slightly back,1432
-right,1190
-forward,1084
-left,915
-back,914
-slightly forward,692
-front,644
-slightly front,580
-single,520
-rapid,450
-slight rapid head shake,392
-slow,359
-slight rapid head nod,239
-slight single head nod,120
-further left,99
-further back,87
-slight single head shake,71
-further right,64
-slight slow head shake,62
-further front,46
-further forward,39
-slight slow head nod,32
-head dip left,2
+version https://git-lfs.github.com/spec/v1
+oid sha256:d2f8d0c43e502f1227d45fd6d3fddfd71353ed69d83ddc8021ad3aa21c0c4863
+size 451

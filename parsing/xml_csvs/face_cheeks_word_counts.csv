@@ -1,9 +1,3 @@
-word,count
-puffed,48
-tensed,19
-tensed right,18
-tensed left,11
-puff right,4
-less tensed,3
-puff left,3
-more tensed,1
+version https://git-lfs.github.com/spec/v1
+oid sha256:07c8f217a7f63e700399a4ee32e6cb0492bca1e8c49c1ae2ec0353ac056e2278
+size 115
