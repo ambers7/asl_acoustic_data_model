@@ -6,7 +6,7 @@ import torch
 import tensorflow as tf
 
 def setup_gpu(gpu_id=0):
-    """Setup GPU configuration"""
+    """Setup GPU configuration for PyTorch and TensorFlow"""
     if torch.cuda.is_available():
         # Set PyTorch device
         torch.cuda.set_device(gpu_id)
@@ -19,7 +19,9 @@ def setup_gpu(gpu_id=0):
                 tf.config.experimental.set_visible_devices(gpus[gpu_id], 'GPU')
             except RuntimeError as e:
                 print(f"GPU setup error: {e}")
+        print(f"Using GPU {gpu_id} for PyTorch/TensorFlow operations")
         return True
+    print("GPU not available, using CPU")
     return False
 
 # Initialize MediaPipe drawing utilities
@@ -73,51 +75,32 @@ def draw_landmarks_on_frame(frame, face_landmarks, pose_landmarks, left_hand_lan
             landmark_drawing_spec=mp_drawing_styles.get_default_hand_landmarks_style()
         )
 
-def preprocess_frame_gpu(frame):
-    """Preprocess frame using GPU"""
-    if torch.cuda.is_available():
-        # Convert frame to GPU tensor
-        frame_tensor = torch.from_numpy(frame).cuda()
-        # Add batch dimension
-        frame_tensor = frame_tensor.unsqueeze(0)
-        # Normalize
-        frame_tensor = frame_tensor.float() / 255.0
-        return frame_tensor
-    return frame
-
-def postprocess_frame_gpu(frame_tensor):
-    """Postprocess frame tensor back to CPU numpy array"""
-    if torch.cuda.is_available():
-        # Convert back to numpy
-        frame = frame_tensor.squeeze(0).cpu().numpy()
-        # Convert back to uint8
-        frame = (frame * 255).astype(np.uint8)
-        return frame
-    return frame
-
 def create_landmark_visualization(video_path, landmarks_npz_path, output_path, gpu_id=0):
     """
-    Create a video with landmarks visualized using GPU acceleration
+    Create a video with landmarks visualized
     
     Args:
         video_path: Path to the original video
         landmarks_npz_path: Path to the NPZ file containing landmarks
         output_path: Path where the output video will be saved
-        gpu_id: GPU device ID to use
+        gpu_id: GPU device ID to use (for PyTorch/TensorFlow operations)
     """
-    # Setup GPU
+    # Setup GPU for PyTorch/TensorFlow operations
     gpu_available = setup_gpu(gpu_id)
-    if gpu_available:
-        print(f"Using GPU {gpu_id}")
-        # Set OpenCV to use CUDA backend
-        cv2.setUseOptimized(True)
-        cv2.cuda.setDevice(gpu_id)
-    else:
-        print("GPU not available, using CPU")
     
     # Load landmarks data
     print("Loading landmarks data...")
     landmarks_data = np.load(landmarks_npz_path, allow_pickle=True)
+    print("Available keys in landmarks file:", landmarks_data.files)
+    
+    # Get the actual landmarks array - assuming it's stored under 'landmarks' or similar key
+    if 'landmarks' in landmarks_data.files:
+        landmarks_array = landmarks_data['landmarks']
+    else:
+        # If there's only one array, take the first key
+        landmarks_array = landmarks_data[landmarks_data.files[0]]
+    
+    print(f"Landmarks array shape: {landmarks_array.shape}")
     
     # Open video
     cap = cv2.VideoCapture(video_path)
@@ -133,13 +116,12 @@ def create_landmark_visualization(video_path, landmarks_npz_path, output_path, g
     
     print(f"Video properties: {frame_width}x{frame_height} @ {fps}fps, {total_frames} frames")
     
+    # Create output directory if it doesn't exist
+    os.makedirs(os.path.dirname(output_path), exist_ok=True)
+    
     # Create video writer
     fourcc = cv2.VideoWriter_fourcc(*'mp4v')
     out = cv2.VideoWriter(output_path, fourcc, fps, (frame_width, frame_height))
-    
-    # Create CUDA stream if GPU is available
-    if gpu_available:
-        stream = cv2.cuda_Stream()
     
     frame_count = 0
     while cap.isOpened():
@@ -147,13 +129,9 @@ def create_landmark_visualization(video_path, landmarks_npz_path, output_path, g
         if not ret:
             break
             
-        if gpu_available:
-            # Upload frame to GPU
-            frame_gpu = preprocess_frame_gpu(frame)
-        
         # Get landmarks for current frame
-        if frame_count < len(landmarks_data):
-            frame_landmarks = landmarks_data[frame_count]
+        if frame_count < len(landmarks_array):
+            frame_landmarks = landmarks_array[frame_count]
             
             # Convert landmark coordinates to MediaPipe format
             face_landmarks = mp_holistic.face_landmarks.FaceLandmark(
@@ -181,8 +159,6 @@ def create_landmark_visualization(video_path, landmarks_npz_path, output_path, g
             ) if 'right_hand_landmarks' in frame_landmarks else None
             
             # Draw landmarks on frame
-            if gpu_available:
-                frame = postprocess_frame_gpu(frame_gpu)
             draw_landmarks_on_frame(frame, face_landmarks, pose_landmarks, 
                                  left_hand_landmarks, right_hand_landmarks)
         
@@ -204,12 +180,18 @@ def create_landmark_visualization(video_path, landmarks_npz_path, output_path, g
 
 if __name__ == "__main__":
     import argparse
-    parser = argparse.ArgumentParser(description='Visualize landmarks on video using GPU acceleration')
-    parser.add_argument('--video', required=True, help='Path to input video')
-    parser.add_argument('--landmarks', required=True, help='Path to landmarks NPZ file')
-    parser.add_argument('--output', required=True, help='Path for output video')
-    parser.add_argument('--gpu', type=int, default=0, help='GPU device ID to use')
+    parser = argparse.ArgumentParser(description='Visualize landmarks on video')
+    parser.add_argument('--gpu', type=int, default=0, help='GPU device ID to use for PyTorch/TensorFlow operations')
     
     args = parser.parse_args()
     
-    create_landmark_visualization(args.video, args.landmarks, args.output, args.gpu) 
+    # Get the directory where this script is located
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    
+    # Define paths relative to the script directory
+    video_path = os.path.join(script_dir, "videos", "1-Introduction-SD.mov")
+    landmarks_path = os.path.join(script_dir, "numpy_data", "1-Introduction-SD_landmarks.npz")
+    output_path = os.path.join(script_dir, "recreated_videos", "recreated_1-Introduction-SD.mp4")
+    
+    # Create the visualization
+    create_landmark_visualization(video_path, landmarks_path, output_path, args.gpu) 
