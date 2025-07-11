@@ -1064,8 +1064,49 @@ for i, (input_arr_raw, target) in enumerate(test_loader):
     print_and_log('test input shape: acoustic' + str(input_arr.shape) + ' imu' + str(input_imu.shape))
     break
 
+# Function to test the model
+def test_model(model, test_loader, device, case_name=""):
+    model.eval()
+    test_correct = 0
+    test_total = 0
+    predictions = []
+    true_labels = []
+    
+    with torch.no_grad():
+        for i, (input_arr_raw, target) in enumerate(test_loader):
+            input_arr = input_arr_raw[0][:,input_channel_slice,:,:]
+            input_imu = input_arr_raw[1][:,:,:,:]
 
-# Define test cases
+            input_arr = Tensor(input_arr).to(device)
+            input_imu = Tensor(input_imu).to(device)
+            labels = torch.tensor([label_dic[x] for x in target], dtype=torch.long).to(device)
+        
+            if fusion == True:
+                outputs = model(input_imu, input_arr)
+            else:
+                if imu_1d == True:
+                    outputs = model(input_imu)
+                else:
+                    outputs = model(input_arr)
+                
+            _, predicted = torch.max(outputs, 1)
+            test_total += labels.size(0)
+            test_correct += (predicted == labels).sum().item()
+            
+            predictions.extend(predicted.cpu().numpy())
+            true_labels.extend(labels.cpu().numpy())
+
+    test_acc = 100 * test_correct / test_total
+    
+    # Create results DataFrame
+    results_df = pd.DataFrame({
+        "True Label": true_labels,
+        "Predicted Label": predictions,
+        "Case": [case_name] * len(true_labels)
+    })
+    
+    return test_acc, results_df
+
 test_cases = [
     ['0601', '0901'],  # First test case
     ['1001'],          # Second test case
