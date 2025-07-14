@@ -263,38 +263,13 @@ def create_landmark_visualization(video_path, landmarks_npz_path, output_path, g
     # Create output directory if it doesn't exist
     os.makedirs(os.path.dirname(output_path), exist_ok=True)
     
-    # Try different codecs in order of preference
-    codecs_to_try = [
-        ('avc1', '.mp4'),  # H.264 codec
-        ('mp4v', '.mp4'),  # Default MP4 codec
-        ('XVID', '.avi'),  # XVID codec
-        ('MJPG', '.avi')   # Motion JPEG
-    ]
+    # Use MJPG codec with AVI container
+    output_path = os.path.splitext(output_path)[0] + '.avi'
+    fourcc = cv2.VideoWriter_fourcc(*'MJPG')
+    out = cv2.VideoWriter(output_path, fourcc, fps, (frame_width, frame_height))
     
-    out = None
-    for codec, ext in codecs_to_try:
-        try:
-            # Update output path with correct extension
-            current_output = os.path.splitext(output_path)[0] + ext
-            fourcc = cv2.VideoWriter_fourcc(*codec)
-            out = cv2.VideoWriter(current_output, fourcc, fps, (frame_width, frame_height))
-            
-            # Test if video writer is working
-            if out is not None and out.isOpened():
-                print(f"Successfully initialized video writer with codec {codec}")
-                output_path = current_output  # Update output path
-                break
-            else:
-                print(f"Failed to initialize video writer with codec {codec}")
-                if out is not None:
-                    out.release()
-        except Exception as e:
-            print(f"Error with codec {codec}: {e}")
-            if out is not None:
-                out.release()
-    
-    if out is None or not out.isOpened():
-        print("Error: Could not initialize any video writer")
+    if not out.isOpened():
+        print("Error: Could not initialize video writer")
         cap.release()
         return
     
@@ -367,7 +342,6 @@ def create_landmark_visualization(video_path, landmarks_npz_path, output_path, g
                 right_hand_landmarks = create_landmark_list_from_points(frame_landmarks['right_hand'])
                 
             except (KeyError, IndexError, AttributeError) as e:
-                # if frame_count % 100 == 0:  # Only print errors every 100 frames
                 print(f"Warning: Error processing landmarks for frame {frame_count}: {e}")
                 face_landmarks = None
                 pose_landmarks = None
@@ -419,7 +393,7 @@ if __name__ == "__main__":
     # Define paths relative to the script directory
     video_path = os.path.join(script_dir, "videos", "1-Introduction-SD.mov")
     landmarks_path = os.path.join(script_dir, "numpy_data", "1-Introduction-SD_landmarks.npz")
-    output_path = os.path.join(script_dir, "recreated_videos", "new_recreated_1-Introduction-SD.mp4")
+    output_path = os.path.join(script_dir, "recreated_videos", "real_1-Introduction-SD.mp4")
     
     # Create the visualization
     create_landmark_visualization(video_path, landmarks_path, output_path, args.gpu) 
