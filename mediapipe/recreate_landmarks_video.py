@@ -242,7 +242,6 @@ def create_landmark_visualization(video_path, landmarks_npz_path, output_path, g
     # Get the actual landmarks array - assuming it's stored under 'frame_data'
     landmarks_array = landmarks_data['frame_data']
     print(f"Landmarks array shape: {landmarks_array.shape}")
-    print(f"Available fields: {landmarks_array.dtype.names}")
     
     # Initialize MediaPipe solutions
     holistic = mp_holistic.Holistic()
@@ -264,11 +263,43 @@ def create_landmark_visualization(video_path, landmarks_npz_path, output_path, g
     # Create output directory if it doesn't exist
     os.makedirs(os.path.dirname(output_path), exist_ok=True)
     
-    # Create video writer
-    fourcc = cv2.VideoWriter_fourcc(*'mp4v')
-    out = cv2.VideoWriter(output_path, fourcc, fps, (frame_width, frame_height))
+    # Try different codecs in order of preference
+    codecs_to_try = [
+        ('avc1', '.mp4'),  # H.264 codec
+        ('mp4v', '.mp4'),  # Default MP4 codec
+        ('XVID', '.avi'),  # XVID codec
+        ('MJPG', '.avi')   # Motion JPEG
+    ]
+    
+    out = None
+    for codec, ext in codecs_to_try:
+        try:
+            # Update output path with correct extension
+            current_output = os.path.splitext(output_path)[0] + ext
+            fourcc = cv2.VideoWriter_fourcc(*codec)
+            out = cv2.VideoWriter(current_output, fourcc, fps, (frame_width, frame_height))
+            
+            # Test if video writer is working
+            if out is not None and out.isOpened():
+                print(f"Successfully initialized video writer with codec {codec}")
+                output_path = current_output  # Update output path
+                break
+            else:
+                print(f"Failed to initialize video writer with codec {codec}")
+                if out is not None:
+                    out.release()
+        except Exception as e:
+            print(f"Error with codec {codec}: {e}")
+            if out is not None:
+                out.release()
+    
+    if out is None or not out.isOpened():
+        print("Error: Could not initialize any video writer")
+        cap.release()
+        return
     
     frame_count = 0
+    last_progress = -1
     while cap.isOpened():
         ret, frame = cap.read()
         if not ret:
@@ -277,7 +308,10 @@ def create_landmark_visualization(video_path, landmarks_npz_path, output_path, g
         # Get landmarks for current frame
         if frame_count < len(landmarks_array):
             frame_landmarks = landmarks_array[frame_count]
-            print(f"Processing frame {frame_count}, landmark type: {type(frame_landmarks)}")
+            
+            # Only print detailed info every 100 frames
+            if frame_count % 100 == 0:
+                print(f"\nProcessing frame {frame_count}/{total_frames}")
             
             # Convert landmark coordinates to MediaPipe format
             try:
@@ -331,13 +365,9 @@ def create_landmark_visualization(video_path, landmarks_npz_path, output_path, g
                 # Create hand landmarks
                 left_hand_landmarks = create_landmark_list_from_points(frame_landmarks['left_hand'])
                 right_hand_landmarks = create_landmark_list_from_points(frame_landmarks['right_hand'])
-
-                if all(x is None for x in [face_landmarks, pose_landmarks, left_hand_landmarks, right_hand_landmarks]):
-                    print(f"Warning: No landmarks found for frame {frame_count}")
-                else:
-                    print(f"Successfully created landmarks for frame {frame_count}")
                 
             except (KeyError, IndexError, AttributeError) as e:
+                # if frame_count % 100 == 0:  # Only print errors every 100 frames
                 print(f"Warning: Error processing landmarks for frame {frame_count}: {e}")
                 face_landmarks = None
                 pose_landmarks = None
@@ -350,19 +380,31 @@ def create_landmark_visualization(video_path, landmarks_npz_path, output_path, g
         
         # Write frame
         out.write(frame)
-        frame_count += 1
         
-        # Display progress
-        if frame_count % 30 == 0:
-            progress = (frame_count / total_frames) * 100
-            print(f"Processed {frame_count}/{total_frames} frames ({progress:.1f}%)")
+        # Update progress
+        frame_count += 1
+        progress = int((frame_count / total_frames) * 100)
+        if progress != last_progress and progress % 10 == 0:  # Print every 10%
+            print(f"Progress: {progress}%")
+            last_progress = progress
     
     # Release resources
     if gpu_available:
         torch.cuda.empty_cache()
     cap.release()
     out.release()
-    print(f"Video saved to {output_path}")
+    print(f"\nVideo saved to {output_path}")
+    
+    # Verify the output video
+    verify_cap = cv2.VideoCapture(output_path)
+    if verify_cap.isOpened():
+        verify_total_frames = int(verify_cap.get(cv2.CAP_PROP_FRAME_COUNT))
+        verify_cap.release()
+        print(f"Output video verification: {verify_total_frames} frames written")
+        if verify_total_frames == 0:
+            print("Warning: Output video appears to be empty!")
+    else:
+        print("Warning: Could not verify output video!")
 
 if __name__ == "__main__":
     import argparse
@@ -377,7 +419,7 @@ if __name__ == "__main__":
     # Define paths relative to the script directory
     video_path = os.path.join(script_dir, "videos", "1-Introduction-SD.mov")
     landmarks_path = os.path.join(script_dir, "numpy_data", "1-Introduction-SD_landmarks.npz")
-    output_path = os.path.join(script_dir, "recreated_videos", "recreated_1-Introduction-SD.mp4")
+    output_path = os.path.join(script_dir, "recreated_videos", "new_recreated_1-Introduction-SD.mp4")
     
     # Create the visualization
     create_landmark_visualization(video_path, landmarks_path, output_path, args.gpu) 
