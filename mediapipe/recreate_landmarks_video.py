@@ -34,18 +34,35 @@ def draw_landmarks_on_frame(frame, face_landmarks, pose_landmarks, left_hand_lan
     """Draw landmarks on a single frame"""
     # Draw face mesh
     if face_landmarks is not None:
+        # Get the number of landmarks we actually have
+        num_landmarks = len(face_landmarks.landmark)
+        
+        # Filter FACEMESH_TESSELATION to only include valid connections
+        valid_tesselation = [
+            connection for connection in mp_face_mesh.FACEMESH_TESSELATION
+            if connection[0] < num_landmarks and connection[1] < num_landmarks
+        ]
+        
+        # Filter FACEMESH_CONTOURS to only include valid connections
+        valid_contours = [
+            connection for connection in mp_face_mesh.FACEMESH_CONTOURS
+            if connection[0] < num_landmarks and connection[1] < num_landmarks
+        ]
+        
+        # Draw tesselation
         mp_drawing.draw_landmarks(
             image=frame,
             landmark_list=face_landmarks,
-            connections=mp_face_mesh.FACEMESH_TESSELATION,
+            connections=valid_tesselation,
             landmark_drawing_spec=None,
             connection_drawing_spec=mp_drawing_styles.get_default_face_mesh_tesselation_style()
         )
-        # Draw face contours
+        
+        # Draw contours
         mp_drawing.draw_landmarks(
             image=frame,
             landmark_list=face_landmarks,
-            connections=mp_face_mesh.FACEMESH_CONTOURS,
+            connections=valid_contours,
             landmark_drawing_spec=None,
             connection_drawing_spec=mp_drawing_styles.get_default_face_mesh_contours_style()
         )
@@ -75,6 +92,135 @@ def draw_landmarks_on_frame(frame, face_landmarks, pose_landmarks, left_hand_lan
             landmark_drawing_spec=mp_drawing_styles.get_default_hand_landmarks_style()
         )
 
+def create_landmark_list():
+    """Create an empty landmark list using the current MediaPipe API"""
+    class Landmark:
+        def __init__(self):
+            self.x = 0.0
+            self.y = 0.0
+            self.z = 0.0
+            self.visibility = 0.0
+            self._has_visibility = False
+        
+        def HasField(self, field_name):
+            if field_name == 'visibility':
+                return self._has_visibility
+            return False
+
+        def __setattr__(self, name, value):
+            super().__setattr__(name, value)
+            if name == 'visibility' and value != 0.0:
+                super().__setattr__('_has_visibility', True)
+
+    class NormalizedLandmarkList:
+        def __init__(self):
+            self.landmark = []
+        
+        def add(self):
+            landmark = Landmark()
+            self.landmark.append(landmark)
+            return landmark
+
+    return NormalizedLandmarkList()
+
+def create_landmark_list_from_points(points):
+    """Create a landmark list from numpy array points"""
+    if points is None or np.all(points == 0):
+        return None
+    landmark_list = create_landmark_list()
+    for point in points:
+        if not np.all(point == 0):
+            landmark = landmark_list.add()
+            landmark.x = float(point[0])
+            landmark.y = float(point[1])
+            landmark.z = float(point[2])
+            landmark.visibility = float(point[3])
+    return landmark_list if len(landmark_list.landmark) > 0 else None
+
+def add_landmark_point(landmark_list, point_data):
+    """Add a single landmark point to the list"""
+    if point_data is not None and not np.all(point_data == 0):
+        landmark = landmark_list.add()
+        landmark.x = float(point_data[0])
+        landmark.y = float(point_data[1])
+        landmark.z = float(point_data[2])
+        landmark.visibility = float(point_data[3])
+
+def create_face_landmarks_from_frame(frame_landmarks):
+    """Create face landmarks in the correct order matching MediaPipe's expected indices"""
+    if frame_landmarks is None:
+        return None
+        
+    face_landmarks = create_landmark_list()
+    
+    # Add landmarks in the exact order they were saved
+    # First add face oval (0-16)
+    for i in range(17):
+        field_name = f'face_oval_{i}'
+        if field_name in frame_landmarks.dtype.names:
+            add_landmark_point(face_landmarks, frame_landmarks[field_name])
+    
+    # Add eyebrows (17-26)
+    for i in range(5):
+        field_name = f'left_eyebrow_{i}'
+        if field_name in frame_landmarks.dtype.names:
+            add_landmark_point(face_landmarks, frame_landmarks[field_name])
+    for i in range(5):
+        field_name = f'right_eyebrow_{i}'
+        if field_name in frame_landmarks.dtype.names:
+            add_landmark_point(face_landmarks, frame_landmarks[field_name])
+    
+    # Add nose (27-35)
+    for i in range(4):
+        field_name = f'nose_bridge_{i}'
+        if field_name in frame_landmarks.dtype.names:
+            add_landmark_point(face_landmarks, frame_landmarks[field_name])
+    for i in range(5):
+        field_name = f'nose_tip_{i}'
+        if field_name in frame_landmarks.dtype.names:
+            add_landmark_point(face_landmarks, frame_landmarks[field_name])
+    
+    # Add eyes (36-47)
+    for i in range(6):
+        field_name = f'left_eye_outline_{i}'
+        if field_name in frame_landmarks.dtype.names:
+            add_landmark_point(face_landmarks, frame_landmarks[field_name])
+    for i in range(6):
+        field_name = f'right_eye_outline_{i}'
+        if field_name in frame_landmarks.dtype.names:
+            add_landmark_point(face_landmarks, frame_landmarks[field_name])
+    
+    # Add lips (48-67)
+    for i in range(12):
+        field_name = f'outer_lips_{i}'
+        if field_name in frame_landmarks.dtype.names:
+            add_landmark_point(face_landmarks, frame_landmarks[field_name])
+    for i in range(8):
+        field_name = f'inner_lips_{i}'
+        if field_name in frame_landmarks.dtype.names:
+            add_landmark_point(face_landmarks, frame_landmarks[field_name])
+    
+    # Add remaining facial features in order
+    remaining_features = [
+        ('pupil_center_', 2),
+        ('left_eyebrow_upper_', 5), ('right_eyebrow_upper_', 5),
+        ('left_eyebrow_lower_', 5), ('right_eyebrow_lower_', 5),
+        ('left_eye_upper0_', 6), ('right_eye_upper0_', 6),
+        ('left_eye_lower0_', 6), ('right_eye_lower0_', 6),
+        ('left_eye_upper1_', 6), ('right_eye_upper1_', 6),
+        ('left_eye_lower1_', 6), ('right_eye_lower1_', 6),
+        ('left_eye_upper2_', 6), ('right_eye_upper2_', 6),
+        ('left_eye_lower2_', 6), ('right_eye_lower2_', 6)
+    ]
+    
+    for prefix, count in remaining_features:
+        for i in range(count):
+            field_name = f'{prefix}{i}'
+            if field_name in frame_landmarks.dtype.names:
+                add_landmark_point(face_landmarks, frame_landmarks[field_name])
+    
+    return face_landmarks if len(face_landmarks.landmark) > 0 else None
+
 def create_landmark_visualization(video_path, landmarks_npz_path, output_path, gpu_id=0):
     """
     Create a video with landmarks visualized
@@ -83,7 +229,7 @@ def create_landmark_visualization(video_path, landmarks_npz_path, output_path, g
         video_path: Path to the original video
         landmarks_npz_path: Path to the NPZ file containing landmarks
         output_path: Path where the output video will be saved
-        gpu_id: GPU device ID to use (for PyTorch/TensorFlow operations)
+        gpu_id: GPU device ID to use for PyTorch/TensorFlow operations
     """
     # Setup GPU for PyTorch/TensorFlow operations
     gpu_available = setup_gpu(gpu_id)
@@ -135,98 +281,11 @@ def create_landmark_visualization(video_path, landmarks_npz_path, output_path, g
             
             # Convert landmark coordinates to MediaPipe format
             try:
-                # Create proper landmark objects
-                def create_landmark_list(prefix, num_landmarks):
-                    landmark_list = mp.framework.formats.landmark_pb2.NormalizedLandmarkList()
-                    for i in range(num_landmarks):
-                        field_name = f"{prefix}_{i}"
-                        if field_name in frame_landmarks.dtype.names and not np.all(frame_landmarks[field_name] == 0):
-                            landmark = landmark_list.landmark.add()
-                            landmark.x = float(frame_landmarks[field_name][0])
-                            landmark.y = float(frame_landmarks[field_name][1])
-                            landmark.z = float(frame_landmarks[field_name][2])
-                            landmark.visibility = float(frame_landmarks[field_name][3])
-                    return landmark_list if len(landmark_list.landmark) > 0 else None
-
-                def create_hand_landmark_list(hand_data):
-                    if np.all(hand_data == 0):
-                        return None
-                    landmark_list = mp.framework.formats.landmark_pb2.NormalizedLandmarkList()
-                    for point in hand_data:
-                        if not np.all(point == 0):
-                            landmark = landmark_list.landmark.add()
-                            landmark.x = float(point[0])
-                            landmark.y = float(point[1])
-                            landmark.z = float(point[2])
-                            landmark.visibility = float(point[3])
-                    return landmark_list if len(landmark_list.landmark) > 0 else None
-
-                # Create face landmarks from all face-related fields
-                face_landmarks = mp.framework.formats.landmark_pb2.NormalizedLandmarkList()
+                # Create landmarks in the correct order
+                face_landmarks = create_face_landmarks_from_frame(frame_landmarks)
+                pose_landmarks = create_landmark_list()
                 
-                # List of all facial feature prefixes from save_landmarks_numpy.py
-                facial_features = [
-                    'face_oval_',           # Face silhouette
-                    'left_eyebrow_', 'right_eyebrow_',  # Basic eyebrows
-                    'left_eyebrow_upper_', 'right_eyebrow_upper_',  # Upper eyebrows
-                    'left_eyebrow_lower_', 'right_eyebrow_lower_',  # Lower eyebrows
-                    'nose_bridge_', 'nose_tip_',  # Basic nose
-                    'left_eye_outline_', 'right_eye_outline_',  # Basic eye outlines
-                    'outer_lips_', 'inner_lips_',  # Basic lips
-                    'pupil_center_',  # Pupils
-                    'left_eye_upper0_', 'right_eye_upper0_',  # Detailed eyes
-                    'left_eye_lower0_', 'right_eye_lower0_',
-                    'left_eye_upper1_', 'right_eye_upper1_',
-                    'left_eye_lower1_', 'right_eye_lower1_',
-                    'left_eye_upper2_', 'right_eye_upper2_',
-                    'left_eye_lower2_', 'right_eye_lower2_',
-                    'nose_bridge_detailed_', 'nose_tip_detailed_',  # Detailed nose
-                    'nose_bottom_', 'nose_right_outline_', 'nose_left_outline_',
-                    'upper_lip_top_', 'upper_lip_bottom_',  # Detailed lips
-                    'lower_lip_top_', 'lower_lip_bottom_',
-                    'mouth_cavity_upper_', 'mouth_cavity_lower_',  # Mouth cavity
-                    'left_cheek_upper_', 'right_cheek_upper_',  # Cheeks
-                    'left_cheek_lower_', 'right_cheek_lower_',
-                    'face_contour_upper_', 'face_contour_lower_',  # Face contours
-                    'face_contour_cheeks_',
-                    'left_eye_creases_', 'right_eye_creases_',  # Eye details
-                    'left_eye_wrinkles_', 'right_eye_wrinkles_',
-                    'forehead_upper_', 'forehead_lower_',  # Forehead
-                    'temple_left_', 'temple_right_',  # Temples
-                    'nose_bridge_wrinkles_', 'nose_side_wrinkles_',  # Nose details
-                    'nose_tip_detailed_wrinkles_',
-                    'mouth_corners_detailed_',  # Mouth details
-                    'left_iris', 'right_iris',  # Iris
-                    'left_eye_mesh_extra_', 'right_eye_mesh_extra_'  # Extra eye mesh points
-                ]
-
-                # Add landmarks for each facial feature
-                for prefix in facial_features:
-                    # For single-point features (like iris)
-                    if prefix in ['left_iris', 'right_iris']:
-                        if prefix in frame_landmarks.dtype.names and not np.all(frame_landmarks[prefix] == 0):
-                            landmark = face_landmarks.landmark.add()
-                            landmark.x = float(frame_landmarks[prefix][0])
-                            landmark.y = float(frame_landmarks[prefix][1])
-                            landmark.z = float(frame_landmarks[prefix][2])
-                            landmark.visibility = float(frame_landmarks[prefix][3])
-                        continue
-
-                    # For multi-point features
-                    max_points = 20  # Large enough number to cover all possible points
-                    for i in range(max_points):
-                        field_name = f"{prefix}{i}"
-                        if field_name in frame_landmarks.dtype.names and not np.all(frame_landmarks[field_name] == 0):
-                            landmark = face_landmarks.landmark.add()
-                            landmark.x = float(frame_landmarks[field_name][0])
-                            landmark.y = float(frame_landmarks[field_name][1])
-                            landmark.z = float(frame_landmarks[field_name][2])
-                            landmark.visibility = float(frame_landmarks[field_name][3])
-
-                face_landmarks = face_landmarks if len(face_landmarks.landmark) > 0 else None
-
-                # Create pose landmarks
-                pose_landmarks = mp.framework.formats.landmark_pb2.NormalizedLandmarkList()
+                # Add pose landmarks in order
                 pose_fields = [
                     'pose_nose',              # 0
                     'pose_left_eye_inner',    # 1
@@ -264,18 +323,14 @@ def create_landmark_visualization(video_path, landmarks_npz_path, output_path, g
                 ]
 
                 for field in pose_fields:
-                    if field in frame_landmarks.dtype.names and not np.all(frame_landmarks[field] == 0):
-                        landmark = pose_landmarks.landmark.add()
-                        landmark.x = float(frame_landmarks[field][0])
-                        landmark.y = float(frame_landmarks[field][1])
-                        landmark.z = float(frame_landmarks[field][2])
-                        landmark.visibility = float(frame_landmarks[field][3])
-
+                    if field in frame_landmarks.dtype.names:
+                        add_landmark_point(pose_landmarks, frame_landmarks[field])
+                
                 pose_landmarks = pose_landmarks if len(pose_landmarks.landmark) > 0 else None
-
+                
                 # Create hand landmarks
-                left_hand_landmarks = create_hand_landmark_list(frame_landmarks['left_hand'])
-                right_hand_landmarks = create_hand_landmark_list(frame_landmarks['right_hand'])
+                left_hand_landmarks = create_landmark_list_from_points(frame_landmarks['left_hand'])
+                right_hand_landmarks = create_landmark_list_from_points(frame_landmarks['right_hand'])
 
                 if all(x is None for x in [face_landmarks, pose_landmarks, left_hand_landmarks, right_hand_landmarks]):
                     print(f"Warning: No landmarks found for frame {frame_count}")
