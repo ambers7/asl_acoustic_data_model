@@ -73,7 +73,7 @@ fusion = False
 imu_1d = False
 only_imu = False
 
-input_channel_slice = [3] #use channel 4 for acoustic data
+input_channel_slice = [0,1,2,3] #use channel 4 for acoustic data
 input_channel = len(input_channel_slice)
 
 
@@ -1108,12 +1108,12 @@ def test_model(model, test_loader, device, case_name=""):
     return test_acc, results_df
 
 test_cases = [
-    ['0601', '0901'],  # First test case
-    ['1001'],          # Second test case
-    ['1101'],          # Third test case
-    ['1201'],          # Fourth test case
-    ['1301']           # Fifth test case
-]
+    ['0601','0901'] ,
+    ['1001'],
+    ['1101'],
+    ['1201'],
+    ['1301']
+ ]
 
 print_and_log("="*50)
 print_and_log("Testing Configuration:")
