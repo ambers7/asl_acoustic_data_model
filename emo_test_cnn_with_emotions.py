@@ -117,8 +117,9 @@ print_and_log("Training script started")
 print_and_log(f"Experiment folder: {best_save_path}")
 print_and_log("="*50)
 
-# Define our categories (only grammar and mouth morphemes)
+# Define our categories (including emotions, grammar, and mouth morphemes)
 lst = [
+       "HAPPY", "SAD", "ANGRY", "TERRIFIED", "DISGUSTED", "SURPRISED",  # Emotions (6)
        "raise eyebrows", "furrowed eyebrows", "shake head side to side with lowered corners of the mouth and eyebrows",  # Grammar (3)
        "puffed", "oo", "mm", "CHA", "TH"]  # Mouth morphemes (5)
 
@@ -132,8 +133,9 @@ print_and_log("="*50)
 print_and_log("Model Configuration:")
 print_and_log(f"Number of classes: {class_num}")
 print_and_log("\nClass categories:")
-print_and_log("Grammar (0-2): " + ", ".join(lst[0:3]))
-print_and_log("Mouth morphemes (3-7): " + ", ".join(lst[3:8]))
+print_and_log("Emotions (0-5): " + ", ".join(lst[0:6]))
+print_and_log("Grammar (6-8): " + ", ".join(lst[6:9]))
+print_and_log("Mouth morphemes (9-13): " + ", ".join(lst[9:14]))
 print_and_log("="*50)
 
 dp = dataset_folder+'/dataset/'
@@ -152,7 +154,7 @@ for test_sess in test_sessions:
 
 print_and_log("="*50)
 print_and_log("Session Configuration:")
-print_and_log("Note: Emotion data will be filtered out from all sessions")
+# print_and_log("Note: Emotion data will be filtered out from all sessions")
 print_and_log(f"Test sessions: {', '.join(test_sessions)} (0601 for grammar, 0901 for mouth)")
 print_and_log(f"Training sessions: {', '.join(train_sessions)}")
 print_and_log("="*50)
@@ -457,22 +459,13 @@ def read_from_folder(session_num, data_path, is_train=False):
     loaded_gt = []
     data_pairs = []
     n_bad = 0
-    n_skipped_emotions = 0
     bad_signal_remove_length = 5
-    
-    # Define emotion categories to skip
-    emotion_categories = ["HAPPY", "SAD", "ANGRY", "TERRIFIED", "DISGUSTED", "SURPRISED"]
     
     for i in range(0, len(file_echo_diff_list)):
         file = file_echo_diff_list[i]
         # Get the ground truth from the file name
         gnd = int(file.split('.')[0].split('_')[2])
         truth = gt[gnd].split(';')[3]  # Get the actual label from ground truth file
-
-        # Skip if this is an emotion label
-        if truth in emotion_categories:
-            n_skipped_emotions += 1
-            continue
 
         # Load imu
         File_data = np.loadtxt(file_imus+"/"+file_imus_list[i], dtype=str, delimiter=" ") 
@@ -500,14 +493,12 @@ def read_from_folder(session_num, data_path, is_train=False):
 
     if n_bad:
         print_and_log('     %d bad data pieces' % n_bad)
-    if n_skipped_emotions:
-        print_and_log('     %d emotion samples skipped' % n_skipped_emotions)
 
     return data_pairs, loaded_gt
 
-# def print_and_log(content, end='\n'):
-#     print(content, end=end)
-#     logging.info(content)
+def print_and_log(content, end='\n'):
+    print(content, end=end)
+    logging.info(content)
 
 
 
@@ -574,18 +565,12 @@ def save_cm_figure(true_label, predict_label, best_save_path, acc, lst):
     cm_normalized = cm.astype('float') / cm.sum(axis=1, keepdims=True)
     
     # Create figure
-    plt.figure(figsize=(15, 12))
+    plt.figure(figsize=(20, 16))  # Made figure larger to accommodate more categories
     sns.heatmap(cm_normalized, annot=True, fmt=".2f", cmap="Blues", linewidths=0.5)
     
     # Customize labels
     plt.xticks(ticks=np.arange(len(unique_classes)) + 0.5, labels=unique_classes, rotation=45, ha='right')
     plt.yticks(ticks=np.arange(len(unique_classes)) + 0.5, labels=unique_classes, rotation=0)
-    
-    # Add category separators and labels
-    plt.axhline(y=6, color='r', linestyle='-', linewidth=2)
-    plt.axhline(y=9, color='r', linestyle='-', linewidth=2)
-    plt.axvline(x=6, color='r', linestyle='-', linewidth=2)
-    plt.axvline(x=9, color='r', linestyle='-', linewidth=2)
     
     # Add titles and labels
     plt.xlabel("Predicted Label")
@@ -1108,7 +1093,7 @@ def test_model(model, test_loader, device, case_name=""):
     return test_acc, results_df
 
 test_cases = [
-    ['0601','0901'] ,
+    ['0301','0601','0901'] ,
     ['1001'],
     ['1101'],
     ['1201'],
