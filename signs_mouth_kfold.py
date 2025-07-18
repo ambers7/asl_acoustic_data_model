@@ -21,6 +21,15 @@ import torch.nn as nn
 import torch.optim as optim
 import torchvision.models as models
 
+# Set random seeds for reproducibility
+random.seed(42)
+np.random.seed(42)
+torch.manual_seed(42)
+if torch.cuda.is_available():
+    torch.cuda.manual_seed(42)
+    torch.backends.cudnn.deterministic = True
+    torch.backends.cudnn.benchmark = False
+
 # Define our categories (only grammar and mouth morphemes)
 lst = ["none", 
        "raise", "furrow", "shake",  # Grammar (3)
@@ -133,8 +142,9 @@ def save_checkpoint(model, optimizer, epoch, best_acc=0.0, filename=best_save_pa
 
 def collate_various_size(batch):
     data_list_arr = [x[0][0] for x in batch]
-    data_list_imu = [x[0][1] for x in batch]
+    # data_list_imu = [x[0][1] for x in batch]  # Not using IMU data
     target = [x[1] for x in batch]
+    filenames = [x[2] for x in batch]  # Keep filenames
     data_max_size = max([x.shape[1] for x in data_list_arr])
     
     window_size = 10
@@ -142,18 +152,15 @@ def collate_various_size(batch):
     target_length = ceil(target_length / window_size) * window_size
    
     data_arr = np.zeros((len(batch), data_list_arr[0].shape[0], target_length, data_list_arr[0].shape[2]))
-    data_imu = np.zeros((len(batch), data_list_imu[0].shape[0], target_length, data_list_imu[0].shape[2]))
     
     # horizontal shifting time axis. 
     for i in range(0, len(data_list_arr)):
         start_x = random.randint(0, target_length - data_list_arr[i].shape[1])
         data_arr[i, :, start_x: start_x + data_list_arr[i].shape[1], :] = data_list_arr[i]
-        data_imu[i, :, start_x: start_x + data_list_imu[i].shape[1], :] = data_list_imu[i]
 
     data_arr = data_arr.swapaxes(2,3) # C, H (spatial height), W (temporal dimension, e.g., time steps)
-    data_imu = data_imu.swapaxes(2,3)
         
-    return (data_arr, data_imu), target
+    return (data_arr, None), target, filenames  # Return None for IMU data
 
 class DataSplitter:
     train_loader: DataLoader
@@ -170,9 +177,6 @@ class DataSplitter:
             train_dataset = CNNDataset(train_data, is_train=True)
             self.train_loader = DataLoader(
                 train_dataset,
-                # batch_size=BATCH_SIZE,
-                # shuffle=shuffle,
-                # drop_last=True,
                 num_workers=WORKER_NUM,
                 collate_fn=collate_various_size,
                 batch_sampler=DataBatches(len(train_dataset), BATCH_SIZE)
@@ -196,31 +200,26 @@ class CNNDataset(torch.utils.data.Dataset):
         
     def __getitem__(self, index):
         input_arr = self.data[index][0]
-        input_imu = self.data[index][2]
+        # input_imu = self.data[index][2]  # Not using IMU data
         output_arr = deepcopy(self.data[index][1])
+        filename = self.data[index][3]  # Keep filename
 
         input_arr_copy = deepcopy(input_arr)
-        input_imu_copy = deepcopy(input_imu)
 
         aug_arr = input_arr_copy
-        aug_imu = input_imu_copy
 
         if self.is_train:
             if (random.random() > 0.2):
                 mask_width = random.randint(10, 20)
                 rand_start = random.randint(0, aug_arr.shape[1] - mask_width)
                 aug_arr[:, rand_start: rand_start + mask_width, :] = 0.0
-                aug_imu[:, rand_start: rand_start + mask_width, :] = 0.0
 
         padded_input = aug_arr
-        padded_imu = aug_imu
 
         if self.is_train:
             if random.random() > 0.2:
                 noise_arr = np.random.random(padded_input.shape).astype(np.float32) * 0.1 + 0.95
-                noise_imu = np.random.random(padded_imu.shape).astype(np.float32) * 0.1 + 0.95
                 padded_input *= noise_arr
-                padded_imu *= noise_imu
 
         padded_input_list = []
         
@@ -238,7 +237,6 @@ class CNNDataset(torch.utils.data.Dataset):
             padded_input_list.append(padded_input_tmp)
 
         padded_input_fn = np.array(padded_input_list)
-        padded_imu = np.nan_to_num(padded_imu, nan=0.0, posinf=0.0, neginf=0.0)
 
         # if poi
         padded_input_fn = padded_input_fn[:,:,int(poi_list[0]):int(poi_list[1])]
@@ -252,7 +250,7 @@ class CNNDataset(torch.utils.data.Dataset):
             # test_dataset
             padded_input_fn = padded_input_fn[:,:,:target_height]
 
-        return (padded_input_fn, padded_imu), output_arr
+        return (padded_input_fn, None), output_arr, filename  # Return None for IMU data
 
     def __len__(self):
         return len(self.data)
@@ -384,7 +382,9 @@ def read_from_folder(session_num, data_path, is_train=False):
             if profile_data_piece.shape[1] > 50:  # check the data quality 
                 data_pairs += [(profile_data_piece[:,:-bad_signal_remove_length,:], 
                               truth, 
-                              normalized_imu_data[:,:-bad_signal_remove_length,:])]
+                            #   normalized_imu_data[:,:-bad_signal_remove_length,:])
+                              all_imu.reshape(1, all_imu.shape[0], all_imu.shape[1]),
+                              file)] #add filename
                 category_counts[truth] += 1
                 # print_and_log(f"Successfully added {truth} sample")  # Debug print
             else:
@@ -607,6 +607,9 @@ for current_fold in range(6):
     # Initialize tracking variables
     best_val_acc = 0.0
     fold_checkpoint_path = os.path.join(best_save_path, f"fold{current_fold+1}_best_checkpoint.pth")
+    best_predictions = None
+    best_true_labels = None
+    best_filenames = None # Initialize best_filenames
     
     # Training loop for this fold
     for epoch in range(num_epochs):
@@ -616,9 +619,9 @@ for current_fold in range(6):
         total = 0
         
         # Training step
-        for i, (input_arr_raw, target) in enumerate(train_loader):
+        for i, (input_arr_raw, target, filename) in enumerate(train_loader):
             input_arr = input_arr_raw[0][:,input_channel_slice,:,:]
-            input_imu = input_arr_raw[1][:,:,:,:]
+            # input_imu = input_arr_raw[1][:,:,:,:] # Not using IMU data
             
             if not isinstance(input_arr, torch.Tensor):
                 input_arr = Tensor(input_arr).to(device)
@@ -645,11 +648,12 @@ for current_fold in range(6):
             test_total = 0
             predictions = []
             true_labels = []
+            filenames = []  # Store filenames
             
             with torch.no_grad():
-                for i, (input_arr_raw, target) in enumerate(test_loader):
+                for i, (input_arr_raw, target, filename) in enumerate(test_loader):  # Get filename
                     input_arr = input_arr_raw[0][:,input_channel_slice,:,:]
-                    input_imu = input_arr_raw[1][:,:,:,:]
+                    # input_imu = input_arr_raw[1][:,:,:,:] # Not using IMU data
                     
                     input_arr = Tensor(input_arr).to(device)
                     labels = torch.tensor([label_dic[x] for x in target], dtype=torch.long).to(device)
@@ -661,11 +665,15 @@ for current_fold in range(6):
                     
                     predictions.extend(predicted.cpu().numpy())
                     true_labels.extend(labels.cpu().numpy())
+                    filenames.extend(filename)  # Store filenames
             
             test_acc = 100 * test_correct / test_total
             
             if test_acc > best_val_acc:
                 best_val_acc = test_acc
+                best_predictions = predictions
+                best_true_labels = true_labels
+                best_filenames = filenames  # Store best filenames
                 # Save fold-specific checkpoint
                 save_checkpoint(model, optimizer, epoch, best_acc=best_val_acc, 
                              filename=fold_checkpoint_path)
@@ -674,13 +682,19 @@ for current_fold in range(6):
                              os.path.join(best_save_path, f"confusion_matrix_fold{current_fold+1}.png"),
                              best_val_acc, lst)
                 
-                # Store the best predictions and true labels for this fold
-                fold_results[current_fold] = {
-                    'best_accuracy': best_val_acc,
-                    'checkpoint_path': fold_checkpoint_path,
-                    'predictions': predictions.copy(),
-                    'true_labels': true_labels.copy()
-                }
+                # Save fold-specific test results
+                test_results = []
+                for true_label, pred_label, filename in zip(true_labels, predicted, filenames):
+                    # Extract sign name from filename (e.g., "black(oo)" from "acoustic_diff_black(oo).npy")
+                    sign_name = filename.split('_')[-1].split('.')[0]  # Get last part before .npy
+                    test_results.append({
+                        'Sign': sign_name,
+                        'Truth': label_dic_reverse[int(true_label)],
+                        'Predicted': label_dic_reverse[int(pred_label)],
+                        'Fold': f'Fold_{current_fold + 1}'
+                    })
+                results_df = pd.DataFrame(test_results)
+                results_df.to_csv(os.path.join(best_save_path, f"test_results_fold{current_fold+1}.csv"), index=False)
             
             print_and_log(f"Epoch [{epoch+1}/{num_epochs}], Loss: {running_loss/len(train_loader):.4f}, "
                          f"Train Accuracy: {100 * correct/total:.2f}%, "
@@ -689,7 +703,10 @@ for current_fold in range(6):
     # Store results for this fold
     fold_results[current_fold] = {
         'best_accuracy': best_val_acc,
-        'checkpoint_path': fold_checkpoint_path
+        'checkpoint_path': fold_checkpoint_path,
+        'predictions': best_predictions,
+        'true_labels': best_true_labels,
+        'filenames': best_filenames  # Store filenames in results
     }
     
     # Clear GPU memory
@@ -722,4 +739,28 @@ save_cm_figure(all_true_labels, all_predictions,
                total_acc/6, lst)
 
 print_and_log("\nCreated combined confusion matrix from all folds")
+print_and_log("="*50)
+
+test_results = []
+for fold_num, results in fold_results.items():
+    if 'true_labels' in results and 'predictions' in results:
+        true_labels = [label_dic_reverse[int(label)] for label in results['true_labels']]
+        predicted_labels = [label_dic_reverse[int(pred)] for pred in results['predictions']]
+
+        # true_labels = [label_dic_reverse[label] for label in results['true_labels']]
+        # predicted_labels = [label_dic_reverse[pred] for pred in results['predictions']]
+        
+        for true_label, pred_label in zip(true_labels, predicted_labels):
+            test_results.append({
+                'True Label': true_label,
+                'Predicted Label': pred_label,
+                'Fold': f'Fold_{fold_num + 1}'
+            })
+    else:
+        print_and_log(f"⚠️  Fold {fold_num + 1} missing predictions, skipped in test_results.csv")
+
+# Save to CSV
+results_df = pd.DataFrame(test_results)
+results_df.to_csv(os.path.join(best_save_path, "test_results.csv"), index=False)
+print_and_log("\nSaved detailed test results to test_results.csv")
 print_and_log("="*50)
