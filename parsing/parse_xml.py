@@ -368,7 +368,7 @@ with open(csv_file, 'w', newline='', encoding='utf-8') as f:
                         if label_elem is not None and label_elem.text:
                             # Clean the ASL gloss
                             label_text = label_elem.text.strip("'")
-                            cleaned_label = re.sub(r'[#+"]', '', label_text)
+                            cleaned_label = re.sub(r'[+"]', '', label_text)
                             cleaned_label = re.sub(r'\(1h\)', '', cleaned_label)
                             cleaned_label = re.sub(r'\(2h\)', '', cleaned_label)
                             cleaned_label = cleaned_label.strip()
