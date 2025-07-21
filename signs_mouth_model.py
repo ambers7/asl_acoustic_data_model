@@ -1150,11 +1150,9 @@ def test_model(model, test_loader, device, case_name=""):
     return test_acc, results_df
 
 test_cases = [
-    ['0301','0601','0901'] ,
-    ['1001'],
-    ['1101'],
-    ['1201'],
-    ['1301']
+    ['0101'],
+    ['0201'],
+    ['0301']
  ]
 
 print_and_log("="*50)

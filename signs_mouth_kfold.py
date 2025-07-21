@@ -682,9 +682,9 @@ for current_fold in range(6):
                              os.path.join(best_save_path, f"confusion_matrix_fold{current_fold+1}.png"),
                              best_val_acc, lst)
                 
-                # Save fold-specific test results
+                # Save fold-specific test results with all test cases
                 test_results = []
-                for true_label, pred_label, filename in zip(true_labels, predicted, filenames):
+                for filename, true_label, pred_label in zip(filenames, true_labels, predictions):
                     # Extract sign name from filename (e.g., "black(oo)" from "acoustic_diff_black(oo).npy")
                     sign_name = filename.split('_')[-1].split('.')[0]  # Get last part before .npy
                     test_results.append({
