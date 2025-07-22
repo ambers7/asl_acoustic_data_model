@@ -130,7 +130,7 @@ for xml_file in xml_files:
         continue
 
 # Write results to CSV
-output_file = 'facial_features_analysis.csv'
+output_file = 'facial_features_analysis_new.csv'
 with open(output_file, 'w', newline='', encoding='utf-8') as f:
     writer = csv.writer(f)
     
@@ -156,8 +156,8 @@ with open(output_file, 'w', newline='', encoding='utf-8') as f:
         
         # Create row
         row = [expression, feature_area, count]
-        for word in top_words:
-            row.extend(word)
+        for word, count in top_words:
+            row.append(f"{word} ({count})")
         
         writer.writerow(row)
 
