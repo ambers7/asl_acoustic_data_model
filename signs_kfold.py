@@ -30,15 +30,26 @@ if torch.cuda.is_available():
     torch.backends.cudnn.deterministic = True
     torch.backends.cudnn.benchmark = False
 
-# Define our categories (only grammar and mouth morphemes)
-lst = ["none", 
-       "raise", "furrow", "shake",  # Grammar (3)
-       "puff", "oo", "mm", "cha", "th", "cs"]  # Mouth morphemes (5)
-
+lst = [
+    "black", "summer", "dontmind", "dontcare", "dry",
+    "mother", "father", "nephew", "niece", "man",
+    "woman", "understand", "sick", "disease", "red",
+    "cute", "dorm", "home", "girl", "aunt",
+    "twin", "restaurant", "see", "watch", "ant",
+    "daily", "sunday", "wonderful", "star", "socks",
+    "my", "I", "you", "your", "short",
+    "child", "family", "class", "electric", "physics",
+    "teach", "none", "sit", "chair", "nice",
+    "clean", "train", "paper", "school", "read",
+    "discuss", "late", "open", "run", "write",
+    "carry", "sign", "drive", "bicycle", "study"
+]
 # Create label mappings
 label_dic = {value: index for index, value in enumerate(lst)}
 label_dic_reverse = {index: value for index, value in enumerate(lst)}
 class_num = len(lst)
+
+num_folds = 5
 
 parser = argparse.ArgumentParser(description='Conditions')
 parser.add_argument('--dataset_path', default='', type=str, help='dataset')
@@ -349,12 +360,15 @@ def read_from_folder(session_num, data_path, is_train=False):
         # print_and_log(f"Processing file: {file}")  # Debug print
         
         # Extract label from filename (e.g., 'acoustic_diff_9_dorm(cs).npy' or 'acoustic_diff_9_dorm(none).npy')
-        match = re.search(r'\((.*?)\)', file)
-        if not match:
+        # match = re.search(r'\((.*?)\)', file)
+        base_name = file.split('.')[0].split('_')[-1]
+        truth = re.sub(r'\(.*\)', '', base_name).lower()  # Remove any (cs), (oo), etc.
+
+        if not truth:
             print_and_log(f"Warning: No label found in parentheses for file {file}")
             continue
             
-        truth = match.group(1).lower()  # Get text between parentheses and convert to lowercase
+        # truth = match.group(1).lower()  # Get text between parentheses and convert to lowercase
         # print_and_log(f"Found label: {truth}")  # Debug print
 
         # Skip if the label is not in our defined categories
@@ -395,22 +409,22 @@ def read_from_folder(session_num, data_path, is_train=False):
             continue
 
     # Print category statistics
-    print_and_log("\nCategory distribution for session %s:" % session_num)
-    print_and_log("-" * 40)
+    # print_and_log("\nCategory distribution for session %s:" % session_num)
+    # print_and_log("-" * 40)
     
-    # Print grammar signs
-    print_and_log("Grammar signs:")
-    for label in lst[1:4]:  # raise, furrow, shake
-        print_and_log(f"  {label}: {category_counts[label]}")
+    # # Print grammar signs
+    # print_and_log("Grammar signs:")
+    # for label in lst[1:4]:  # raise, furrow, shake
+    #     print_and_log(f"  {label}: {category_counts[label]}")
     
-    # Print mouth morphemes
-    print_and_log("\nMouth morphemes:")
-    for label in lst[4:]:  # puff, oo, mm, cha, th, cs
-        print_and_log(f"  {label}: {category_counts[label]}")
+    # # Print mouth morphemes
+    # print_and_log("\nMouth morphemes:")
+    # for label in lst[4:]:  # puff, oo, mm, cha, th, cs
+    #     print_and_log(f"  {label}: {category_counts[label]}")
     
-    # Print none category
-    print_and_log("\nNone category:")
-    print_and_log(f"  none: {category_counts['none']}")
+    # # Print none category
+    # print_and_log("\nNone category:")
+    # print_and_log(f"  none: {category_counts['none']}")
     
     print_and_log("-" * 40)
     if n_bad:
@@ -479,96 +493,58 @@ def create_category_folds(category_data, n_folds):
     
     return folds
 
-def create_stratified_folds(data_path, n_folds=6):
-    """Create stratified k-folds ensuring balanced distribution of grammar and mouth morpheme signs."""
-    # First, organize data by category
-    none_data = []
-    grammar_data = []
-    mouth_data = []
-    
-    # Read all files and categorize them
-    session_path = data_path + '/dataset/session_'
-    for session in os.listdir(data_path + '/dataset/'):
+def get_category_stats(data):
+    """Returns a dictionary of label counts in the given data."""
+    stats = defaultdict(int)
+    for item in data:
+        label = item[1]
+        stats[label] += 1
+    return stats
+
+
+def create_stratified_folds(data_path, n_folds=num_folds):
+    """Create stratified k-folds ensuring balanced distribution of all labels in `lst`."""
+    all_data = []
+
+    session_path = os.path.join(data_path, 'dataset')
+    for session in os.listdir(session_path):
         if session.startswith('session_'):
             session_num = session.split('_')[1]
-            data_pairs, _ = read_from_folder(session_num, data_path + '/dataset/session_', is_train=True)
-            
-            # Categorize each sample
-            for data in data_pairs:
-                label = data[1]  # Get the label
-                if label == "none":
-                    none_data.append(data)
-                elif label in lst[1:4]:  # Grammar signs (raise, furrow, shake)
-                    grammar_data.append(data)
-                elif label in lst[4:]:  # Mouth morphemes (puff, oo, mm, cha, th, cs)
-                    mouth_data.append(data)
+            data_pairs, _ = read_from_folder(session_num, os.path.join(session_path, ''), is_train=True)
+            all_data.extend(data_pairs)
+
+    print_and_log(f"Total samples: {len(all_data)}")
+
+    # Log total per-class distribution
+    print_and_log("\n📊 Overall Label Distribution:")
+    total_stats = get_category_stats(all_data)
+    for label in sorted(lst):
+        print_and_log(f"  {label}: {total_stats[label]}")
+
+    # Create stratified folds
+    labels = [label_dic[x[1]] for x in all_data]
+    skf = StratifiedKFold(n_splits=n_folds, shuffle=True, random_state=42)
     
-    print_and_log(f"Total samples - None: {len(none_data)}, Grammar: {len(grammar_data)}, Mouth: {len(mouth_data)}")
-    
-    # Create stratified folds for each category
-    none_folds = create_category_folds(none_data, n_folds)
-    grammar_folds = create_category_folds(grammar_data, n_folds)
-    mouth_folds = create_category_folds(mouth_data, n_folds)
-    
-    # Combine folds while maintaining stratification
-    combined_folds = []
-    for i in range(n_folds):
-        train_data = []
-        test_data = []
-        
-        # Add none samples
-        for j in range(n_folds):
-            if j != i:  # Training fold
-                train_data.extend(none_folds[j])
-            else:  # Test fold
-                test_data.extend(none_folds[j])
-        
-        # Add grammar samples
-        for j in range(n_folds):
-            if j != i:  # Training fold
-                train_data.extend(grammar_folds[j])
-            else:  # Test fold
-                test_data.extend(grammar_folds[j])
-        
-        # Add mouth morpheme samples
-        for j in range(n_folds):
-            if j != i:  # Training fold
-                train_data.extend(mouth_folds[j])
-            else:  # Test fold
-                test_data.extend(mouth_folds[j])
-        
-        # Shuffle the combined data
-        random.shuffle(train_data)
-        random.shuffle(test_data)
-        
-        combined_folds.append((train_data, test_data))
-        
-        # Log fold statistics
+    folds = []
+    indices = list(range(len(all_data)))
+    for i, (_, test_idx) in enumerate(skf.split(indices, labels)):
+        test_data = [all_data[j] for j in test_idx]
+        train_data = [all_data[j] for j in indices if j not in test_idx]
+        folds.append((train_data, test_data))
+
+        # Log per-fold stats
         train_stats = get_category_stats(train_data)
         test_stats = get_category_stats(test_data)
-        print_and_log(f"\nFold {i+1} statistics:")
+
+        print_and_log(f"\n📂 Fold {i+1} Statistics:")
         print_and_log("Training set:")
-        if 'None' in train_stats:
-            print_and_log(f"  None: {train_stats['None']}")
-        if 'Grammar' in train_stats:
-            print_and_log(f"  Grammar: {train_stats['Grammar']}")
-        if 'Mouth' in train_stats:
-            print_and_log(f"  Mouth: {train_stats['Mouth']}")
-        for cat, count in train_stats.items():
-            if ' - ' in cat:  # Individual category counts
-                print_and_log(f"  {cat}: {count}")
+        for label in sorted(lst):
+            print_and_log(f"  {label}: {train_stats[label]}")
         print_and_log("Test set:")
-        if 'None' in test_stats:
-            print_and_log(f"  None: {test_stats['None']}")
-        if 'Grammar' in test_stats:
-            print_and_log(f"  Grammar: {test_stats['Grammar']}")
-        if 'Mouth' in test_stats:
-            print_and_log(f"  Mouth: {test_stats['Mouth']}")
-        for cat, count in test_stats.items():
-            if ' - ' in cat:  # Individual category counts
-                print_and_log(f"  {cat}: {count}")
-    
-    return combined_folds
+        for label in sorted(lst):
+            print_and_log(f"  {label}: {test_stats[label]}")
+
+    return folds
 
 # Create stratified folds
 folds = create_stratified_folds(args.dataset_path)
@@ -576,14 +552,26 @@ folds = create_stratified_folds(args.dataset_path)
 # Dictionary to store results for each fold
 fold_results = {}
 
-# Lists to store all predictions and true labels across folds
-all_predictions = []
-all_true_labels = []
+# Handle resume functionality - determine starting fold
+start_fold = 0
+if args.resume:
+    # Extract fold number from checkpoint path
+    fold_match = re.search(r'fold(\d+)', args.resume)
+    if fold_match:
+        start_fold = int(fold_match.group(1)) - 1  # Convert to 0-based index
+        print_and_log(f"Will resume training from fold {start_fold + 1}")
+    else:
+        print_and_log("⚠️ Could not determine fold number from checkpoint path, starting from fold 1")
 
 # Train on each fold
-for current_fold in range(6):
+for current_fold in range(num_folds):
+    # Skip folds we've already completed when resuming
+    if current_fold < start_fold:
+        print_and_log(f"Skipping fold {current_fold + 1} (already completed)")
+        continue
+
     print_and_log("="*50)
-    print_and_log(f"Training on fold {current_fold + 1}/6")
+    print_and_log(f"Training on fold {current_fold + 1}/{num_folds}")
     print_and_log("Note: Data is stratified by grammar and mouth morpheme categories")
     
     # Get data for current fold
@@ -606,13 +594,26 @@ for current_fold in range(6):
     
     # Initialize tracking variables
     best_val_acc = 0.0
-    fold_checkpoint_path = os.path.join(best_save_path, f"fold{current_fold+1}_best_checkpoint.pth")
-    best_predictions = None
-    best_true_labels = None
-    best_filenames = None # Initialize best_filenames
+    fold_dir = os.path.join(best_save_path, f"fold_{current_fold+1}")
+    ensure_folder_exists(fold_dir)
+    
+    # Handle resume functionality for this fold
+    start_epoch = 0
+    if args.resume and current_fold == start_fold:
+        print_and_log(f"Resuming fold {current_fold + 1} from checkpoint: {args.resume}")
+        checkpoint = torch.load(args.resume, map_location=device)
+        model.load_state_dict(checkpoint['model_state'])
+        optimizer.load_state_dict(checkpoint['optimizer_state'])
+        start_epoch = checkpoint['epoch'] + 1
+        best_val_acc = checkpoint.get('best_accuracy', 0.0)
+        print_and_log(f"Resumed from epoch {start_epoch}")
+        print_and_log(f"Training will continue from epoch {start_epoch} to {num_epochs}")
+        print_and_log(f"📊 Loaded previous best accuracy: {best_val_acc:.2f}%")
+    else:
+        print_and_log(f"Starting training from epoch 0 to {num_epochs}")
     
     # Training loop for this fold
-    for epoch in range(num_epochs):
+    for epoch in range(start_epoch, num_epochs):
         model.train()
         running_loss = 0.0
         correct = 0
@@ -621,7 +622,6 @@ for current_fold in range(6):
         # Training step
         for i, (input_arr_raw, target, filename) in enumerate(train_loader):
             input_arr = input_arr_raw[0][:,input_channel_slice,:,:]
-            # input_imu = input_arr_raw[1][:,:,:,:] # Not using IMU data
             
             if not isinstance(input_arr, torch.Tensor):
                 input_arr = Tensor(input_arr).to(device)
@@ -646,15 +646,13 @@ for current_fold in range(6):
             model.eval()
             test_correct = 0
             test_total = 0
-            predictions = []
-            true_labels = []
-            filenames = []  # Store filenames
+            all_predictions = []
+            all_true_labels = []
+            all_filenames = []
             
             with torch.no_grad():
-                for i, (input_arr_raw, target, filename) in enumerate(test_loader):  # Get filename
+                for i, (input_arr_raw, target, filename) in enumerate(test_loader):
                     input_arr = input_arr_raw[0][:,input_channel_slice,:,:]
-                    # input_imu = input_arr_raw[1][:,:,:,:] # Not using IMU data
-                    
                     input_arr = Tensor(input_arr).to(device)
                     labels = torch.tensor([label_dic[x] for x in target], dtype=torch.long).to(device)
                     
@@ -663,51 +661,49 @@ for current_fold in range(6):
                     test_total += labels.size(0)
                     test_correct += (predicted == labels).sum().item()
                     
-                    predictions.extend(predicted.cpu().numpy())
-                    true_labels.extend(labels.cpu().numpy())
-                    filenames.extend(filename)  # Store filenames
+                    all_predictions.extend(predicted.cpu().numpy())
+                    all_true_labels.extend(labels.cpu().numpy())
+                    all_filenames.extend(filename)
             
             test_acc = 100 * test_correct / test_total
             
             if test_acc > best_val_acc:
                 best_val_acc = test_acc
-                best_predictions = predictions
-                best_true_labels = true_labels
-                best_filenames = filenames  # Store best filenames
-                # Save fold-specific checkpoint
-                save_checkpoint(model, optimizer, epoch, best_acc=best_val_acc, 
-                             filename=fold_checkpoint_path)
-                # Save fold-specific confusion matrix
-                save_cm_figure(true_labels, predictions, 
-                             os.path.join(best_save_path, f"confusion_matrix_fold{current_fold+1}.png"),
+                
+                # Save model checkpoint
+                save_checkpoint(model, optimizer, epoch, best_acc=best_val_acc,
+                             filename=os.path.join(fold_dir, "best_checkpoint.pth"))
+                
+                # Save confusion matrix
+                save_cm_figure(all_true_labels, all_predictions,
+                             os.path.join(fold_dir, "confusion_matrix.png"),
                              best_val_acc, lst)
                 
-                # Save fold-specific test results with all test cases
-                test_results = []
-                for filename, true_label, pred_label in zip(filenames, true_labels, predictions):
-                    # Extract sign name from filename (e.g., "black(oo)" from "acoustic_diff_black(oo).npy")
-                    sign_name = filename.split('_')[-1].split('.')[0]  # Get last part before .npy
-                    test_results.append({
+                # Save detailed results
+                results = []
+                for filename, true_label, pred_label in zip(all_filenames, all_true_labels, all_predictions):
+                    # Extract sign name from filename
+                    sign_name = filename.split('_')[-1].split('.')[0]
+                    results.append({
+                        'File': filename,
                         'Sign': sign_name,
-                        'Truth': label_dic_reverse[int(true_label)],
-                        'Predicted': label_dic_reverse[int(pred_label)],
-                        'Fold': f'Fold_{current_fold + 1}'
+                        'True Label': label_dic_reverse[int(true_label)],
+                        'Predicted Label': label_dic_reverse[int(pred_label)],
+                        'Correct': true_label == pred_label
                     })
-                results_df = pd.DataFrame(test_results)
-                results_df.to_csv(os.path.join(best_save_path, f"test_results_fold{current_fold+1}.csv"), index=False)
+                pd.DataFrame(results).to_csv(os.path.join(fold_dir, "results.csv"), index=False)
+                
+                # Store best results
+                fold_results[current_fold] = {
+                    'accuracy': best_val_acc,
+                    'predictions': all_predictions,
+                    'true_labels': all_true_labels,
+                    'filenames': all_filenames
+                }
             
             print_and_log(f"Epoch [{epoch+1}/{num_epochs}], Loss: {running_loss/len(train_loader):.4f}, "
                          f"Train Accuracy: {100 * correct/total:.2f}%, "
                          f"Test Accuracy: {test_acc:.2f}%, Best: {best_val_acc:.2f}%")
-    
-    # Store results for this fold
-    fold_results[current_fold] = {
-        'best_accuracy': best_val_acc,
-        'checkpoint_path': fold_checkpoint_path,
-        'predictions': best_predictions,
-        'true_labels': best_true_labels,
-        'filenames': best_filenames  # Store filenames in results
-    }
     
     # Clear GPU memory
     del model
@@ -720,47 +716,40 @@ print_and_log("Training Complete - Summary of All Folds")
 print_and_log("="*50)
 total_acc = 0
 for fold_num, results in fold_results.items():
-    print_and_log(f"Fold {fold_num + 1}: Best Accuracy = {results['best_accuracy']:.2f}%")
-    total_acc += results['best_accuracy']
+    print_and_log(f"Fold {fold_num + 1}: Best Accuracy = {results['accuracy']:.2f}%")
+    total_acc += results['accuracy']
 print_and_log("-"*50)
-print_and_log(f"Average Accuracy Across All Folds: {total_acc/6:.2f}%")
+print_and_log(f"Average Accuracy Across All Folds: {total_acc/num_folds:.2f}%")
 print_and_log("="*50)
 
 # Create combined confusion matrix from all folds' best results
 all_predictions = []
 all_true_labels = []
-for fold_num, results in fold_results.items():
+for results in fold_results.values():
     all_predictions.extend(results['predictions'])
     all_true_labels.extend(results['true_labels'])
 
 # Save combined confusion matrix
 save_cm_figure(all_true_labels, all_predictions,
                os.path.join(best_save_path, "confusion_matrix_combined.png"),
-               total_acc/6, lst)
+               total_acc/num_folds, lst)
 
-print_and_log("\nCreated combined confusion matrix from all folds")
-print_and_log("="*50)
-
-test_results = []
+# Save combined results
+all_results = []
 for fold_num, results in fold_results.items():
-    if 'true_labels' in results and 'predictions' in results:
-        true_labels = [label_dic_reverse[int(label)] for label in results['true_labels']]
-        predicted_labels = [label_dic_reverse[int(pred)] for pred in results['predictions']]
+    for filename, true_label, pred_label in zip(results['filenames'],
+                                              results['true_labels'],
+                                              results['predictions']):
+        sign_name = filename.split('_')[-1].split('.')[0]
+        all_results.append({
+            'File': filename,
+            'Sign': sign_name,
+            'True Label': label_dic_reverse[int(true_label)],
+            'Predicted Label': label_dic_reverse[int(pred_label)],
+            'Correct': true_label == pred_label,
+            'Fold': f"Fold_{fold_num+1}"
+        })
 
-        # true_labels = [label_dic_reverse[label] for label in results['true_labels']]
-        # predicted_labels = [label_dic_reverse[pred] for pred in results['predictions']]
-        
-        for true_label, pred_label in zip(true_labels, predicted_labels):
-            test_results.append({
-                'True Label': true_label,
-                'Predicted Label': pred_label,
-                'Fold': f'Fold_{fold_num + 1}'
-            })
-    else:
-        print_and_log(f"⚠️  Fold {fold_num + 1} missing predictions, skipped in test_results.csv")
-
-# Save to CSV
-results_df = pd.DataFrame(test_results)
-results_df.to_csv(os.path.join(best_save_path, "test_results.csv"), index=False)
-print_and_log("\nSaved detailed test results to test_results.csv")
+pd.DataFrame(all_results).to_csv(os.path.join(best_save_path, "all_results.csv"), index=False)
+print_and_log("\nSaved combined results to all_results.csv")
 print_and_log("="*50)
