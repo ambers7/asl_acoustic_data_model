@@ -14,8 +14,8 @@ from sklearn.metrics import confusion_matrix
 import argparse
 import torch.nn as nn
 import torch.optim as optim
-import re
 import torchvision.models as models
+import re
 
 # Set random seeds for reproducibility
 random.seed(42)
@@ -26,68 +26,10 @@ if torch.cuda.is_available():
     torch.backends.cudnn.deterministic = True
     torch.backends.cudnn.benchmark = False
 
-lst = [
-    "black",
-    "summer",
-    "dontmind",
-    "dontcare",
-    "dry",
-    "mother",
-    "father",
-    "nephew",
-    "niece",
-    "man",
-    "woman",
-    "understand",
-    "sick",
-    "disease",
-    "red",
-    "cute",
-    "dorm",
-    "home",
-    "girl",
-    "aunt",
-    "twin",
-    "restaurant",
-    "see",
-    "watch",
-    "ant",
-    "daily",
-    "sunday",
-    "wonderful",
-    "star",
-    "socks",
-    "my",
-    "I",
-    "you",
-    "your",
-    "short",
-    "child",
-    "family",
-    "class",
-    "electric",
-    "physics",
-    "teach",
-    "none",
-    "sit",
-    "chair",
-    "nice",
-    "clean",
-    "train",
-    "paper",
-    "school",
-    "read",
-    "discuss",
-    "late",
-    "open",
-    "run",
-    "write",
-    "carry",
-    "sign",
-    "drive",
-    "bicycle",
-    "study"
-]
+# Define our categories
+lst = ["none", 
+       "raise", "furrow", "shake",  # Grammar (3)
+       "puff", "oo", "mm", "cha", "th", "cs"]  # Mouth morphemes (5)
 
 # Create label mappings
 label_dic = {value: index for index, value in enumerate(lst)}
@@ -160,6 +102,9 @@ print_and_log("="*50)
 # Log the configuration
 print_and_log("Model Configuration:")
 print_and_log(f"Number of classes: {class_num}")
+print_and_log("\nClass categories:")
+print_and_log("Grammar (1-3): " + ", ".join(lst[1:4]))
+print_and_log("Mouth morphemes (4-10): " + ", ".join(lst[4:]))
 print_and_log("="*50)
 
 def save_checkpoint(model, optimizer, epoch, best_acc=0.0, filename=best_save_path + "best_checkpoint.pth"):
@@ -172,28 +117,24 @@ def save_checkpoint(model, optimizer, epoch, best_acc=0.0, filename=best_save_pa
     torch.save(checkpoint, filename)
     print_and_log(f"✅ Checkpoint saved at epoch {epoch+1} with best accuracy: {best_acc:.2f}%")
 
-def collate_various_size(batch):
-    # Each batch item is (acoustic_data, label, filename)
+def collate_various_size(batch): 
     data_list_arr = [x[0] for x in batch]  # Get acoustic data directly
     target = [x[1] for x in batch]        # Get label
     filenames = [x[2] for x in batch]     # Get filename
-    
-    data_max_size = max([x.shape[1] for x in data_list_arr])
+    data_max_size = max([x.shape[1] for x in data_list_arr])  # Get max length along time dimension
     
     window_size = 10
     target_length = data_max_size 
     target_length = ceil(target_length / window_size) * window_size
    
-    # Create zero array with shape (batch_size, channels, max_length, height)
     data_arr = np.zeros((len(batch), data_list_arr[0].shape[0], target_length, data_list_arr[0].shape[2]))
     
-    # Fill in the data with random horizontal shifting
-    for i in range(len(data_list_arr)):
+    # horizontal shifting time axis
+    for i in range(0, len(data_list_arr)):
         start_x = random.randint(0, target_length - data_list_arr[i].shape[1])
-        data_arr[i, :, start_x:start_x + data_list_arr[i].shape[1], :] = data_list_arr[i]
+        data_arr[i, :, start_x: start_x + data_list_arr[i].shape[1], :] = data_list_arr[i]
 
-    # Swap axes to match expected input format
-    data_arr = data_arr.swapaxes(2, 3)
+    data_arr = data_arr.swapaxes(2,3)
         
     return data_arr, target, filenames
 
@@ -228,9 +169,9 @@ class CNNDataset(torch.utils.data.Dataset):
         self.is_train = is_train
         
     def __getitem__(self, index):
-        input_arr = self.data[index][0]  # Get acoustic data
-        output_arr = deepcopy(self.data[index][1])  # Get label
-        filename = self.data[index][2]  # Get filename
+        input_arr = self.data[index][0]
+        output_arr = deepcopy(self.data[index][1])
+        filename = self.data[index][2]
 
         input_arr_copy = deepcopy(input_arr)
         aug_arr = input_arr_copy
@@ -330,10 +271,7 @@ def read_from_folder(session_num, data_path, is_train=False):
     for file in file_echo_diff_list:
         try:
             # Extract label from filename (e.g., 'acoustic_diff_9_dorm(cs).npy')
-            # label_match = file.split('(')[-1].split(')')[0].lower()
-            # label_match = file.split('_')[-1].split('.')[0].split('(')[0]
-            # label_match = re.search(r'_(\w+)\(', file).group(1)
-            label_match = re.search(r'_([^_()]+)\(', file).group(1)
+            label_match = file.split('(')[-1].split(')')[0].lower()
             
             # Skip if the label is not in our defined categories
             if label_match not in lst:
@@ -364,13 +302,13 @@ def read_from_folder(session_num, data_path, is_train=False):
 
     # Print category statistics
     print_and_log(f"\nCategory distribution for session {session_num}:")
-    # print_and_log("-" * 40)
-    # print_and_log("Grammar signs:")
-    # for label in lst[1:4]:
-    #     print_and_log(f"  {label}: {category_counts[label]}")
-    # print_and_log("\nMouth morphemes:")
-    # for label in lst[4:]:
-    #     print_and_log(f"  {label}: {category_counts[label]}")
+    print_and_log("-" * 40)
+    print_and_log("Grammar signs:")
+    for label in lst[1:4]:
+        print_and_log(f"  {label}: {category_counts[label]}")
+    print_and_log("\nMouth morphemes:")
+    for label in lst[4:]:
+        print_and_log(f"  {label}: {category_counts[label]}")
     print_and_log("\nNone category:")
     print_and_log(f"  none: {category_counts['none']}")
     print_and_log("-" * 40)
@@ -385,25 +323,22 @@ def save_cm_figure(true_label, predict_label, filepath, acc):
     true_labels = [label_dic_reverse[i] for i in true_label]
     predicted_labels = [label_dic_reverse[i] for i in predict_label]
     
-    # Create figure
-    plt.figure(figsize=(20, 16))
-    
     # Compute confusion matrix
     cm = confusion_matrix(true_labels, predicted_labels, labels=lst)
     cm_normalized = cm.astype('float') / cm.sum(axis=1, keepdims=True)
     
-    # Create heatmap
-    sns.heatmap(cm_normalized, annot=True, fmt=".2f", cmap="Blues", 
-                xticklabels=lst, yticklabels=lst)
+    # Create figure
+    plt.figure(figsize=(15, 12))
+    sns.heatmap(cm_normalized, annot=True, fmt=".2f", cmap="Blues", linewidths=0.5)
     
     # Customize labels
-    plt.xticks(rotation=45, ha='right')
-    plt.yticks(rotation=0)
+    plt.xticks(ticks=np.arange(len(lst)) + 0.5, labels=lst, rotation=45, ha='right')
+    plt.yticks(ticks=np.arange(len(lst)) + 0.5, labels=lst, rotation=0)
     
     # Add titles and labels
     plt.xlabel("Predicted Label")
     plt.ylabel("True Label")
-    plt.title(f"Confusion Matrix\nAccuracy: {acc:.2f}%")
+    plt.title(f"Confusion Matrix - Accuracy: {acc:.2f}%")
     
     # Save with high quality
     plt.savefig(filepath, dpi=300, bbox_inches="tight")
@@ -419,22 +354,26 @@ folds = [
 # Dictionary to store results for each fold
 fold_results = {}
 
-# Handle resume functionality - determine starting fold
-start_fold = 0
-if args.resume:
-    # Extract fold number from checkpoint path
-    fold_match = re.search(r'fold_(\d+)', args.resume)
-    if fold_match:
-        start_fold = int(fold_match.group(1)) - 1  # Convert to 0-based index
-        print_and_log(f"Will resume training from fold {start_fold + 1}")
-    else:
-        print_and_log("⚠️ Could not determine fold number from checkpoint path, starting from fold 1")
+# Set to start from fold 2 (index 1)
+start_fold = 1
+print_and_log(f"Will retrain folds {start_fold + 1} and {start_fold + 2}")
+
+# Clean up old results for folds 2 and 3
+for fold_num in [2, 3]:
+    fold_dir = os.path.join(best_save_path, f"fold_{fold_num}")
+    if os.path.exists(fold_dir):
+        print_and_log(f"Cleaning up old results from fold {fold_num}")
+        for file in ['best_checkpoint.pth', 'confusion_matrix.png', 'results.csv']:
+            file_path = os.path.join(fold_dir, file)
+            if os.path.exists(file_path):
+                os.remove(file_path)
+                print_and_log(f"Removed {file}")
 
 # Train on each fold
 for fold_idx, fold in enumerate(folds):
-    # Skip folds we've already completed when resuming
+    # Skip fold 1
     if fold_idx < start_fold:
-        print_and_log(f"Skipping fold {fold_idx + 1} (already completed)")
+        print_and_log(f"Skipping fold {fold_idx + 1} (keeping existing results)")
         continue
         
     print_and_log("="*50)
@@ -471,7 +410,7 @@ for fold_idx, fold in enumerate(folds):
     best_val_acc = 0.0
     fold_dir = os.path.join(best_save_path, f"fold_{fold_idx+1}")
     ensure_folder_exists(fold_dir)
-    
+
     # Handle resume functionality
     start_epoch = 0
     if args.resume:
@@ -486,7 +425,7 @@ for fold_idx, fold in enumerate(folds):
         print_and_log(f"📊 Loaded previous best accuracy from checkpoint: {best_val_acc:.2f}%")
     else:
         print_and_log(f"Starting training from epoch 0 to {num_epochs}")
-    
+
     # Training loop for this fold
     for epoch in range(start_epoch, num_epochs):
         model.train()
