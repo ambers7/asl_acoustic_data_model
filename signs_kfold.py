@@ -37,7 +37,7 @@ lst = [
     "cute", "dorm", "home", "girl", "aunt",
     "twin", "restaurant", "see", "watch", "ant",
     "daily", "sunday", "wonderful", "star", "socks",
-    "my", "I", "you", "your", "short",
+    "my", "i", "you", "your", "short",
     "child", "family", "class", "electric", "physics",
     "teach", "none", "sit", "chair", "nice",
     "clean", "train", "paper", "school", "read",
@@ -136,8 +136,9 @@ print_and_log("="*50)
 print_and_log("Model Configuration:")
 print_and_log(f"Number of classes: {class_num}")
 print_and_log("\nClass categories:")
-print_and_log("Grammar (1-3): " + ", ".join(lst[1:4]))
-print_and_log("Mouth morphemes (4-10): " + ", ".join(lst[4:]))
+print_and_log("All: " + ", ".join(lst))
+# print_and_log("Grammar (1-3): " + ", ".join(lst[1:4]))
+# print_and_log("Mouth morphemes (4-10): " + ", ".join(lst[4:]))
 print_and_log("="*50)
 
 def save_checkpoint(model, optimizer, epoch, best_acc=0.0, filename=best_save_path + "best_checkpoint.pth"):
@@ -338,7 +339,8 @@ def normalize_imu_data(upsampled_imu_data):
     return normalized_imu_data, means, stds
 
 def read_from_folder(session_num, data_path, is_train=False):
-    file_path = data_path + '%s'%str(session_num)
+    file_path = os.path.join(data_path, session_num)  # session_num is actually session folder name now
+    # file_path = data_path + '%s'%str(session_num)
     file_echo_org = file_path +  "/" + 'acoustic/non_diff'
     file_echo_diff = file_path +  "/" + 'acoustic/diff'
     file_imus = file_path +  "/"  + 'imu'
@@ -509,9 +511,11 @@ def create_stratified_folds(data_path, n_folds=num_folds):
     session_path = os.path.join(data_path, 'dataset')
     for session in os.listdir(session_path):
         if session.startswith('session_'):
-            session_num = session.split('_')[1]
-            data_pairs, _ = read_from_folder(session_num, os.path.join(session_path, ''), is_train=True)
+            # Pass the full folder name, e.g. 'session_0201'
+            session_folder_name = session
+            data_pairs, _ = read_from_folder(session_folder_name, os.path.join(session_path, ''), is_train=True)
             all_data.extend(data_pairs)
+
 
     print_and_log(f"Total samples: {len(all_data)}")
 
@@ -555,8 +559,13 @@ fold_results = {}
 # Handle resume functionality - determine starting fold
 start_fold = 0
 if args.resume:
+    if not os.path.isfile(args.resume):
+        print_and_log(f"❌ Resume checkpoint not found: {args.resume}")
+        args.resume = None
+
     # Extract fold number from checkpoint path
-    fold_match = re.search(r'fold(\d+)', args.resume)
+    fold_match = re.search(r'fold[_\-]?(\d+)', args.resume)
+
     if fold_match:
         start_fold = int(fold_match.group(1)) - 1  # Convert to 0-based index
         print_and_log(f"Will resume training from fold {start_fold + 1}")
