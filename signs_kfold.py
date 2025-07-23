@@ -581,7 +581,6 @@ for current_fold in range(num_folds):
 
     print_and_log("="*50)
     print_and_log(f"Training on fold {current_fold + 1}/{num_folds}")
-    print_and_log("Note: Data is stratified by grammar and mouth morpheme categories")
     
     # Get data for current fold
     train_data, test_data = folds[current_fold]

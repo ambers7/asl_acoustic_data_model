@@ -39,6 +39,7 @@ lst = ["none",
 label_dic = {value: index for index, value in enumerate(lst)}
 label_dic_reverse = {index: value for index, value in enumerate(lst)}
 class_num = len(lst)
+num_folds = 5
 
 parser = argparse.ArgumentParser(description='Conditions')
 parser.add_argument('--dataset_path', default='', type=str, help='dataset')
@@ -327,10 +328,11 @@ def normalize_imu_data(upsampled_imu_data):
     return normalized_imu_data, means, stds
 
 def read_from_folder(session_num, data_path, is_train=False):
-    file_path = data_path + '%s'%str(session_num)
-    file_echo_org = file_path +  "/" + 'acoustic/non_diff'
-    file_echo_diff = file_path +  "/" + 'acoustic/diff'
-    file_imus = file_path +  "/"  + 'imu'
+    # Construct file path correctly using os.path.join
+    file_path = os.path.join(data_path, f"session_{session_num}")
+    file_echo_org = os.path.join(file_path, 'acoustic', 'non_diff')
+    file_echo_diff = os.path.join(file_path, 'acoustic', 'diff')
+    file_imus = os.path.join(file_path, 'imu')
     file_echo_org_list = sorted([f for f in os.listdir(file_echo_org)])
     file_echo_diff_list = sorted([f for f in os.listdir(file_echo_diff)])
     file_imus_list = sorted([f for f in os.listdir(file_imus)])
@@ -479,7 +481,7 @@ def create_category_folds(category_data, n_folds):
     
     return folds
 
-def create_stratified_folds(data_path, n_folds=6):
+def create_stratified_folds(data_path, n_folds=num_folds):
     """Create stratified k-folds ensuring balanced distribution of grammar and mouth morpheme signs."""
     # First, organize data by category
     none_data = []
@@ -487,11 +489,11 @@ def create_stratified_folds(data_path, n_folds=6):
     mouth_data = []
     
     # Read all files and categorize them
-    session_path = data_path + '/dataset/session_'
-    for session in os.listdir(data_path + '/dataset/'):
+    dataset_path = os.path.join(data_path, 'dataset')
+    for session in os.listdir(dataset_path):
         if session.startswith('session_'):
-            session_num = session.split('_')[1]
-            data_pairs, _ = read_from_folder(session_num, data_path + '/dataset/session_', is_train=True)
+            session_num = session.split('_')[1]  # Get just the number part
+            data_pairs, _ = read_from_folder(session_num, dataset_path, is_train=True)
             
             # Categorize each sample
             for data in data_pairs:
@@ -580,10 +582,32 @@ fold_results = {}
 all_predictions = []
 all_true_labels = []
 
+# Handle resume functionality - determine starting fold
+start_fold = 0
+if args.resume:
+    if not os.path.isfile(args.resume):
+        print_and_log(f"❌ Resume checkpoint not found: {args.resume}")
+        args.resume = None
+
+    # Extract fold number from checkpoint path
+    fold_match = re.search(r'fold[_\-]?(\d+)', args.resume)
+
+    if fold_match:
+        start_fold = int(fold_match.group(1)) - 1  # Convert to 0-based index
+        print_and_log(f"Will resume training from fold {start_fold + 1}")
+    else:
+        print_and_log("⚠️ Could not determine fold number from checkpoint path, starting from fold 1")
+
+
 # Train on each fold
-for current_fold in range(6):
+for current_fold in range(num_folds):
+    # Skip folds we've already completed when resuming
+    if current_fold < start_fold:
+        print_and_log(f"Skipping fold {current_fold + 1} (already completed)")
+        continue
+
     print_and_log("="*50)
-    print_and_log(f"Training on fold {current_fold + 1}/6")
+    print_and_log(f"Training on fold {current_fold + 1}/{num_folds}")
     print_and_log("Note: Data is stratified by grammar and mouth morpheme categories")
     
     # Get data for current fold
@@ -606,13 +630,29 @@ for current_fold in range(6):
     
     # Initialize tracking variables
     best_val_acc = 0.0
-    fold_checkpoint_path = os.path.join(best_save_path, f"fold{current_fold+1}_best_checkpoint.pth")
+    fold_dir = os.path.join(best_save_path, f"fold_{current_fold+1}")
+    fold_checkpoint_path = os.path.join(best_save_path, f"fold_{current_fold+1}_best_checkpoint.pth")
     best_predictions = None
     best_true_labels = None
     best_filenames = None # Initialize best_filenames
     
-    # Training loop for this fold
-    for epoch in range(num_epochs):
+    # Handle resume functionality for this fold
+    start_epoch = 0
+    if args.resume and current_fold == start_fold:
+        print_and_log(f"Resuming fold {current_fold + 1} from checkpoint: {args.resume}")
+        checkpoint = torch.load(args.resume, map_location=device)
+        model.load_state_dict(checkpoint['model_state'])
+        optimizer.load_state_dict(checkpoint['optimizer_state'])
+        start_epoch = checkpoint['epoch'] + 1
+        best_val_acc = checkpoint.get('best_accuracy', 0.0)
+        print_and_log(f"Resumed from epoch {start_epoch}")
+        print_and_log(f"Training will continue from epoch {start_epoch} to {num_epochs}")
+        print_and_log(f"📊 Loaded previous best accuracy: {best_val_acc:.2f}%")
+    else:
+        print_and_log(f"Starting training from epoch 0 to {num_epochs}")
+   
+   # Training loop for this fold
+    for epoch in range(start_epoch, num_epochs):
         model.train()
         running_loss = 0.0
         correct = 0
@@ -671,15 +711,12 @@ for current_fold in range(6):
             
             if test_acc > best_val_acc:
                 best_val_acc = test_acc
-                best_predictions = predictions
-                best_true_labels = true_labels
-                best_filenames = filenames  # Store best filenames
                 # Save fold-specific checkpoint
                 save_checkpoint(model, optimizer, epoch, best_acc=best_val_acc, 
                              filename=fold_checkpoint_path)
                 # Save fold-specific confusion matrix
                 save_cm_figure(true_labels, predictions, 
-                             os.path.join(best_save_path, f"confusion_matrix_fold{current_fold+1}.png"),
+                             os.path.join(fold_dir, f"confusion_matrix.png"),
                              best_val_acc, lst)
                 
                 # Save fold-specific test results with all test cases
@@ -694,20 +731,14 @@ for current_fold in range(6):
                         'Fold': f'Fold_{current_fold + 1}'
                     })
                 results_df = pd.DataFrame(test_results)
-                results_df.to_csv(os.path.join(best_save_path, f"test_results_fold{current_fold+1}.csv"), index=False)
+                results_df.to_csv(os.path.join(fold_dir, f"results.csv"), index=False)
+
             
             print_and_log(f"Epoch [{epoch+1}/{num_epochs}], Loss: {running_loss/len(train_loader):.4f}, "
                          f"Train Accuracy: {100 * correct/total:.2f}%, "
                          f"Test Accuracy: {test_acc:.2f}%, Best: {best_val_acc:.2f}%")
     
-    # Store results for this fold
-    fold_results[current_fold] = {
-        'best_accuracy': best_val_acc,
-        'checkpoint_path': fold_checkpoint_path,
-        'predictions': best_predictions,
-        'true_labels': best_true_labels,
-        'filenames': best_filenames  # Store filenames in results
-    }
+    
     
     # Clear GPU memory
     del model
@@ -723,7 +754,7 @@ for fold_num, results in fold_results.items():
     print_and_log(f"Fold {fold_num + 1}: Best Accuracy = {results['best_accuracy']:.2f}%")
     total_acc += results['best_accuracy']
 print_and_log("-"*50)
-print_and_log(f"Average Accuracy Across All Folds: {total_acc/6:.2f}%")
+print_and_log(f"Average Accuracy Across All Folds: {total_acc/num_folds:.2f}%")
 print_and_log("="*50)
 
 # Create combined confusion matrix from all folds' best results
@@ -736,7 +767,7 @@ for fold_num, results in fold_results.items():
 # Save combined confusion matrix
 save_cm_figure(all_true_labels, all_predictions,
                os.path.join(best_save_path, "confusion_matrix_combined.png"),
-               total_acc/6, lst)
+               total_acc/num_folds, lst)
 
 print_and_log("\nCreated combined confusion matrix from all folds")
 print_and_log("="*50)
