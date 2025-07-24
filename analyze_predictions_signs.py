@@ -6,8 +6,8 @@ import re
 # df = pd.read_csv("/home/as4288/asl_acoustic_data_model/experiments/data/sign_mouth_combos_poi_300_600_th_280ch4_3fold_signs/fold_1/results.csv")
 
 # fold 1, 350-600
-df = pd.read_csv("/home/as4288/asl_acoustic_data_model/experiments/data/sign_mouth_combos_poi_350_600_th_240ch4_3fold_signs_350/fold_1/results.csv")
-
+# df = pd.read_csv("/home/as4288/asl_acoustic_data_model/experiments/data/sign_mouth_combos_poi_350_600_th_240ch4_3fold_signs_350/fold_1/results.csv")
+df = pd.read_csv("/home/as4288/asl_acoustic_data_model/experiments/data/sign_mouth_combos_poi_350_600_th_240ch4_fusion_signs4sesh/fold_1/results.csv")
 
 # Map base ASL words to their signing area
 asl_sign_locations = {
@@ -55,6 +55,7 @@ def extract_base_and_morpheme(fname):
 
 # Apply extraction
 df['BaseWord'], df['Morpheme'] = zip(*df['File'].map(extract_base_and_morpheme))
+total_predictions_by_morpheme = df['Morpheme'].value_counts()
 
 # Rename for consistency
 df.rename(columns={"True Label": "Truth", "Predicted Label": "Predicted"}, inplace=True)
@@ -111,24 +112,76 @@ mistakes_by_area = mistakes["SignArea"].value_counts()
 # Mistakes count per morpheme
 mistakes_by_morpheme = mistakes['Morpheme'].value_counts()
 
+# print("Mistakes by Mouth Morpheme and common mistaken predictions:\n")
+# for morpheme, group_df in mistakes.groupby('Morpheme'):
+#     total_morph_mistakes = len(group_df)
+#     print(f"• Morpheme '{morpheme}': {total_morph_mistakes} mistakes")
+    
+#     baseword_counts = group_df['BaseWord'].value_counts().head(5)
+#     print("  Common true basewords with this morpheme mistake:")
+#     for baseword, count in baseword_counts.items():
+#         print(f"    - {baseword}: {count}")
+    
+#     predicted_counts = group_df['Predicted'].value_counts().head(5)
+#     print("  Mistaken as:")
+#     for pred_label, count in predicted_counts.items():
+#         # Get the set of morphemes used with this predicted label in these mistakes
+#         pred_morphemes = group_df[group_df['Predicted'] == pred_label]['Morpheme'].unique()
+#         morpheme_list = ', '.join(sorted(pred_morphemes))
+#         print(f"    - {pred_label} ({morpheme_list}): {count}")
+#     print()
+
+from tabulate import tabulate  # Ensure it's imported
+
+# Table for morphemes
+table_rows = []
+for morpheme in sorted(total_predictions_by_morpheme.index):
+    total_preds = total_predictions_by_morpheme[morpheme]
+    total_mistakes = mistakes_by_morpheme.get(morpheme, 0)
+    error_rate = total_mistakes / total_preds * 100 if total_preds > 0 else 0.0
+
+    # Get top 3 mistaken basewords
+    morph_mistakes = mistakes[mistakes['Morpheme'] == morpheme]
+    top_basewords = morph_mistakes['BaseWord'].value_counts().head(3)
+    baseword_str = ', '.join([f"{bw} ({ct})" for bw, ct in top_basewords.items()])
+
+    table_rows.append([
+        morpheme,
+        total_preds,
+        f"{total_mistakes} / {total_predictions} ({error_rate:.1f}%)",
+        baseword_str
+    ])
+
+print("\n📊 Mistake Summary by Mouth Morpheme\n")
+print(tabulate(
+    table_rows,
+    headers=["Morpheme", "Predictions", "Mistakes (Count/Total %)", "Top Mistaken BaseWords"],
+    tablefmt="github"
+))
+
+
 print("Mistakes by Mouth Morpheme and common mistaken predictions:\n")
+
 for morpheme, group_df in mistakes.groupby('Morpheme'):
     total_morph_mistakes = len(group_df)
-    print(f"• Morpheme '{morpheme}': {total_morph_mistakes} mistakes")
+    total_morph_predictions = total_predictions_by_morpheme.get(morpheme, 0)
+    percent = (total_morph_mistakes / total_predictions * 100) if total_predictions > 0 else 0.0
+    print(f"• Morpheme '{morpheme}': {total_morph_mistakes} / {total_predictions} predictions ({percent:.1f}%)")
     
     baseword_counts = group_df['BaseWord'].value_counts().head(5)
     print("  Common true basewords with this morpheme mistake:")
     for baseword, count in baseword_counts.items():
-        print(f"    - {baseword}: {count}")
+        print(f"    - {baseword}: {count} mistakes")
     
     predicted_counts = group_df['Predicted'].value_counts().head(5)
     print("  Mistaken as:")
     for pred_label, count in predicted_counts.items():
-        # Get the set of morphemes used with this predicted label in these mistakes
         pred_morphemes = group_df[group_df['Predicted'] == pred_label]['Morpheme'].unique()
         morpheme_list = ', '.join(sorted(pred_morphemes))
         print(f"    - {pred_label} ({morpheme_list}): {count}")
+    
     print()
+
 
     
 
@@ -138,6 +191,31 @@ for area, count in mistakes_by_area.items():
     print(f"  • {area}: {count} mistakes out of {total_area_predictions} predictions ({count/total_area_predictions*100:.2f}%)")
 
 print()
+
+print("\n📊 Mistake Summary by BaseWord\n")
+
+# Total predictions and mistakes per BaseWord
+total_preds_by_baseword = df['BaseWord'].value_counts()
+mistakes_by_baseword = mistakes['BaseWord'].value_counts()
+
+baseword_rows = []
+for baseword in sorted(total_preds_by_baseword.index):
+    total = total_preds_by_baseword[baseword]
+    mistakes_count = mistakes_by_baseword.get(baseword, 0)
+    percent = mistakes_count / total_predictions * 100 if total_predictions > 0 else 0.0
+
+    baseword_rows.append([
+        baseword,
+        total,
+        f"{mistakes_count} / {total_predictions} ({percent:.1f}%)"
+    ])
+
+print(tabulate(
+    baseword_rows,
+    headers=["BaseWord", "Predictions", "Mistakes (Count/Total %)"],
+    tablefmt="github"
+))
+
 
 print("🔢 Top 5 Truth signs most often misclassified:\n")
 for truth_label, count in top_truth_mistakes.items():

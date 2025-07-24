@@ -4,7 +4,7 @@ from collections import defaultdict
 # Load CSV
 # df = pd.read_csv("/home/as4288/asl_acoustic_data_model/experiments/data/6foldsign_mouth_combos_poi_300_360_th_50ch4_fusion_withcsvs/reloading/test_results_combined_full.csv")
 
-df = pd.read_csv("/home/as4288/asl_acoustic_data_model/experiments/data/sign_mouth_combos_poi_300_360_th_50ch4_3fold_mouth/fold_2/results.csv")
+df = pd.read_csv("/home/as4288/asl_acoustic_data_model/experiments/data/sign_facial_mouth_combos_poi_300_360_th_50ch4_3fold_mouth/fold_2/results.csv")
 
 # ASL sign locations
 asl_sign_locations = {
@@ -37,12 +37,20 @@ df['BaseWord_MouthMorph'] = df['BaseWord'] + ' (' + df['MouthMorph'] + ')'
 df['Truth_MouthMorph'] = df['Truth'] + ' (' + df['MouthMorph'] + ')'
 df['Predicted_MouthMorph'] = df['Predicted'] + ' (' + df['MouthMorph'] + ')'
 
+# Assign SignArea to all predictions (not just mistakes)
+df["SignArea"] = df["BaseWord"].map(asl_sign_locations)
+
+# Total predictions per signing area
+total_preds_by_area = df["SignArea"].value_counts().to_dict()
+total_preds_all = len(df)
+
+
 # Filter to only mistaken predictions
 mistakes = df[df["Truth"] != df["Predicted"]].copy()
 
 # Total mistakes
 total_mistakes = len(mistakes)
-print(f"❌ Total number of mistakes: {total_mistakes}\n")
+print(f"❌ Total number of mistakes: {total_mistakes}/{total_preds_all} ({100 * total_mistakes / total_preds_all:.1f}%)\n")
 
 # Top 5 most mistaken basewords
 top_baseword_mistakes = (
@@ -110,10 +118,10 @@ for area, count in mistakes_by_area.items():
 print()
 
 
-# OVERVIEW: facial expression × signing area
-print("📊 OVERVIEW: Total Mistakes by Facial Expression and Signing Area\n")
+# # OVERVIEW: facial expression × signing area
+# print("📊 OVERVIEW: Total Mistakes by Facial Expression and Signing Area\n")
 
-# Collect data in a nested dict: morph → area → count
+# # Collect data in a nested dict: morph → area → count
 overview = defaultdict(lambda: defaultdict(int))
 
 # Count total mistakes per morph
@@ -125,58 +133,138 @@ for _, row in mistakes.iterrows():
     area = row["SignArea"]
     overview[morph][area] += 1
 
-# Print a nice summary
+# # Print a nice summary
 areas = ["upper face", "lower face", "body"]
-header = f"{'Morpheme':<10} | {'Total':<5} | " + " | ".join([f"{a:<11}" for a in areas])
+# header = f"{'Morpheme':<10} | {'Total':<5} | " + " | ".join([f"{a:<11}" for a in areas])
+# print(header)
+# print("-" * len(header))
+# for morph in sorted(overview.keys()):
+#     total = morph_totals.get(morph, 0)
+#     counts = [overview[morph].get(area, 0) for area in areas]
+#     line = f"{morph:<10} | {total:<5} | " + " | ".join([f"{c:<11}" for c in counts])
+#     print(line)
+print("📊 OVERVIEW: Mistakes / Total Predictions by Facial Expression and Signing Area\n")
+
+header = f"{'Morpheme':<10} | {'Mistakes':<15} | " + " | ".join([f"{a:<15}" for a in areas])
 print(header)
 print("-" * len(header))
+
 for morph in sorted(overview.keys()):
-    total = morph_totals.get(morph, 0)
-    counts = [overview[morph].get(area, 0) for area in areas]
-    line = f"{morph:<10} | {total:<5} | " + " | ".join([f"{c:<11}" for c in counts])
-    print(line)
+    total_mistakes = morph_totals.get(morph, 0)
+    overall_line = f"{total_mistakes}/{total_preds_all} ({100 * total_mistakes / total_preds_all:.1f}%)"
 
+    counts = []
+    for area in areas:
+        area_mistakes = overview[morph].get(area, 0)
+        area_total_preds = total_preds_by_area.get(area, 1)  # prevent division by 0
+        counts.append(f"{area_mistakes}/{area_total_preds} ({100 * area_mistakes / area_total_preds:.1f}%)")
 
+    print(f"{morph:<10} | {overall_line:<15} | " + " | ".join([f"{c:<15}" for c in counts]))
+
+print() 
 # Compute and print aggregate percentages for all facial expressions
-total_upper = sum(overview[m].get("upper face", 0) for m in overview)
-total_lower = sum(overview[m].get("lower face", 0) for m in overview)
-total_body  = sum(overview[m].get("body", 0) for m in overview)
-total_all   = total_upper + total_lower + total_body
+# total_upper = sum(overview[m].get("upper face", 0) for m in overview)
+# total_lower = sum(overview[m].get("lower face", 0) for m in overview)
+# total_body  = sum(overview[m].get("body", 0) for m in overview)
+# total_all   = total_upper + total_lower + total_body
 
-if total_all > 0:
-    percent_upper = total_upper / total_all * 100
-    percent_lower = total_lower / total_all * 100
-    percent_upper_lower = (total_upper + total_lower) / total_all * 100
+# if total_all > 0:
+#     percent_upper = total_upper / total_all * 100
+#     percent_lower = total_lower / total_all * 100
+#     percent_upper_lower = (total_upper + total_lower) / total_all * 100
 
-    print("🧠 Overall Mistake Distribution by Signing Area (all morphemes):")
-    print(f"  • Upper Face: {total_upper} mistakes ({percent_upper:.1f}%)")
-    print(f"  • Lower Face: {total_lower} mistakes ({percent_lower:.1f}%)")
-    print(f"  • Combined Upper + Lower: {total_upper + total_lower} mistakes ({percent_upper_lower:.1f}%)")
-    print(f"  • Body: {total_body} mistakes ({total_body / total_all * 100:.1f}%)")
-else:
-    print("⚠️ No mistakes to compute area percentages.\n")
+#     print()
+#     print("🧠 Overall Mistake Distribution by Signing Area (all morphemes):")
+#     print(f"  • Upper Face: {total_upper} mistakes ({percent_upper:.1f}%)")
+#     print(f"  • Lower Face: {total_lower} mistakes ({percent_lower:.1f}%)")
+#     print(f"  • Combined Upper + Lower: {total_upper + total_lower} mistakes ({percent_upper_lower:.1f}%)")
+#     print(f"  • Body: {total_body} mistakes ({total_body / total_all * 100:.1f}%)")
+# Total mistakes by signing area
+mistake_upper = sum(overview[m].get("upper face", 0) for m in overview)
+mistake_lower = sum(overview[m].get("lower face", 0) for m in overview)
+mistake_body  = sum(overview[m].get("body", 0) for m in overview)
+
+# Total predictions by signing area
+total_upper = total_preds_by_area.get("upper face", 1)
+total_lower = total_preds_by_area.get("lower face", 1)
+total_body  = total_preds_by_area.get("body", 1)
+total_combined = total_upper + total_lower
+total_all = total_preds_all
+
+# Compute percentages per signing area
+percent_upper = (mistake_upper / total_upper) * 100
+percent_lower = (mistake_lower / total_lower) * 100
+percent_combined = ((mistake_upper + mistake_lower) / total_combined) * 100
+percent_body = (mistake_body / total_body) * 100
+
+print("🧠 Overall Mistake Distribution by Signing Area (normalized to total predictions):")
+print(f"  • Upper Face: {mistake_upper} / {total_upper} ({percent_upper:.1f}%)")
+print(f"  • Lower Face: {mistake_lower} / {total_lower} ({percent_lower:.1f}%)")
+print(f"  • Combined Upper + Lower: {mistake_upper + mistake_lower} / {total_combined} ({percent_combined:.1f}%)")
+print(f"  • Body: {mistake_body} / {total_body} ({percent_body:.1f}%)")
+
+
+# else:
+#     print("⚠️ No mistakes to compute area percentages.\n")
 
 print("\n🧠 Mistake Distribution by Signing Area for Each Facial Expression:")
-for morph, areas in overview.items():
-    total = sum(areas.values())
-    upper = areas.get("upper face", 0)
-    lower = areas.get("lower face", 0)
-    body  = areas.get("body", 0)
+for morph, areas_dict in overview.items():
+# Total number of mistakes for this morph
+    morph_mistakes = mistakes[mistakes["MouthMorph"] == morph]
+    total_morph_mistakes = len(morph_mistakes)
+
+    # Compute totals for each area
+    upper = areas_dict.get("upper face", 0)
+    lower = areas_dict.get("lower face", 0)
+    body  = areas_dict.get("body", 0)
     combined = upper + lower
 
-    if total > 0:
-        percent_upper = upper / total * 100
-        percent_lower = lower / total * 100
-        percent_combined = combined / total * 100
-        percent_body = body / total * 100
+    # Total predictions in each area
+    total_upper = total_preds_by_area.get("upper face", 1)
+    total_lower = total_preds_by_area.get("lower face", 1)
+    total_body = total_preds_by_area.get("body", 1)
+    total_combined = total_upper + total_lower
 
-        print(f"\n😶 '{morph}': {total} total mistakes")
-        print(f"  • Upper Face: {upper} ({percent_upper:.1f}%)")
-        print(f"  • Lower Face: {lower} ({percent_lower:.1f}%)")
-        print(f"  • Combined Upper + Lower: {combined} ({percent_combined:.1f}%)")
-        print(f"  • Body: {body} ({percent_body:.1f}%)")
-    else:
-        print(f"\n😶 '{morph}': 0 total mistakes")
+    # Overall predictions
+    percent_overall = total_morph_mistakes / total_preds_all * 100
+    percent_upper = upper / total_upper * 100
+    percent_lower = lower / total_lower * 100
+    percent_combined = combined / total_combined * 100
+    percent_body = body / total_body * 100
+
+    print(f"\n😶 '{morph}': {total_morph_mistakes} mistakes / {total_preds_all} predictions ({percent_overall:.1f}%)")
+    print(f"  • Upper Face: {upper} / {total_upper} ({percent_upper:.1f}%)")
+    print(f"  • Lower Face: {lower} / {total_lower} ({percent_lower:.1f}%)")
+    print(f"  • Combined Upper + Lower: {combined} / {total_combined} ({percent_combined:.1f}%)")
+    print(f"  • Body: {body} / {total_body} ({percent_body:.1f}%)")
+# for morph, areas in overview.items():
+#     total = sum(areas.values())
+#     upper = areas.get("upper face", 0)
+#     lower = areas.get("lower face", 0)
+#     body  = areas.get("body", 0)
+#     combined = upper + lower
+
+#     if total > 0:
+#         percent_upper = upper / total * 100
+#         percent_lower = lower / total * 100
+#         percent_combined = combined / total * 100
+#         percent_body = body / total * 100
+        
+
+#         # print(f"\n😶 '{morph}': {total} total mistakes")
+#         # print(f"  • Upper Face: {upper} ({percent_upper:.1f}%)")
+#         # print(f"  • Lower Face: {lower} ({percent_lower:.1f}%)")
+#         # print(f"  • Combined Upper + Lower: {combined} ({percent_combined:.1f}%)")
+#         # print(f"  • Body: {body} ({percent_body:.1f}%)")
+#         print(f"  • Total Mistakes: {total} / {total_preds_all} ({percent_overall:.1f}%)")
+#         print(f"  • Upper Face: {upper} / {total_preds_by_area.get('upper face', 1)} ({percent_upper:.1f}%)")
+#         print(f"  • Lower Face: {lower} / {total_preds_by_area.get('lower face', 1)} ({percent_lower:.1f}%)")
+#         print(f"  • Combined Upper + Lower: {combined} / {(total_preds_by_area.get('upper face', 1) + total_preds_by_area.get('lower face', 1))} ({percent_combined:.1f}%)")
+#         print(f"  • Body: {body} / {total_preds_by_area.get('body', 1)} ({percent_body:.1f}%)")
+
+
+    # else:
+    #     print(f"\n😶 '{morph}': 0 total mistakes")
 
 
 print("\n" + "=" * 60 + "\n")
@@ -192,7 +280,11 @@ for morph in sorted(mistakes["MouthMorph"].dropna().unique()):
 
     area_counts = morph_mistakes["SignArea"].value_counts()
     for area, count in area_counts.items():
-        print(f"  • {area}: {count} / {total_morph_mistakes} mistakes")
+        total_preds_in_area = total_preds_by_area.get(area, 1)  # to avoid division by zero
+        percent = count / total_preds_in_area * 100
+        print(f"  • {area}: {count} / {total_preds_in_area} predictions ({percent:.1f}%)")
+
+        # print(f"  • {area}: {count} / {total_morph_mistakes} mistakes")
 
     print("\n🔍 Detailed mistakes grouped by signing area:")
     for area in area_counts.index:
