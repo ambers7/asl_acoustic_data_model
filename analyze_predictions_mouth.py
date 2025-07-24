@@ -29,6 +29,7 @@ df["BaseWord"] = df["Sign"].str.extract(r'^([^\(]+)')
 # Extract mouth morpheme (e.g., "mm")
 df["MouthMorph"] = df["Sign"].str.extract(r'\((.*?)\)')
 
+
 # Rename for consistency
 df.rename(columns={"True Label": "Truth", "Predicted Label": "Predicted"}, inplace=True)
 
@@ -47,6 +48,26 @@ total_preds_all = len(df)
 
 # Filter to only mistaken predictions
 mistakes = df[df["Truth"] != df["Predicted"]].copy()
+
+# Facial region mapping for expressions
+facial_region_map = {
+    "cha": "lower",
+    "mm": "lower",
+    "oo": "lower",
+    "puff": "lower",
+    "none": "none",
+    "th": "lower",
+    "cs": "lower",
+    "raise": "upper",
+    "shake": "shake",
+    "furrow": "upper"
+}
+
+# Add a FacialRegion column to all predictions
+df["FacialRegion"] = df["MouthMorph"].map(facial_region_map)
+mistakes["FacialRegion"] = mistakes["MouthMorph"].map(facial_region_map)
+
+
 
 # Total mistakes
 total_mistakes = len(mistakes)
@@ -302,3 +323,33 @@ for morph in sorted(mistakes["MouthMorph"].dropna().unique()):
                 print(f"    ↳ Mistaken as: {pred_label} ({pred_count} times)")
 
     print("-" * 60)
+
+print("\n🧠 Overall Mistake Distribution by Facial Region (normalized to predictions for each region):")
+
+# Get counts
+mistakes_by_region = mistakes["FacialRegion"].value_counts()
+preds_by_region = df["FacialRegion"].value_counts()
+
+for region in ["upper", "lower", "none", "shake"]:
+    mistakes_count = mistakes_by_region.get(region, 0)
+    total_preds = preds_by_region.get(region, 1)  # avoid division by zero
+    percent = mistakes_count / total_preds * 100
+    print(f"  • {region.title()}: {mistakes_count} / {total_preds} ({percent:.1f}%)")
+
+print("\n🧠 Overall Mistake Distribution by Facial Region (normalized to total predictions):")
+
+for region in ["upper", "lower", "none", "shake"]:
+    mistakes_count = mistakes_by_region.get(region, 0)
+    # total_preds = preds_by_region.get(region, 1)  # avoid division by zero
+    percent = mistakes_count / total_preds_all * 100
+    print(f"  • {region.title()}: {mistakes_count} / {total_preds_all} ({percent:.1f}%)")
+
+print("\n🧠 Mistake Distribution by Facial Region for Each Facial Expression:")
+
+for morph in sorted(mistakes["MouthMorph"].dropna().unique()):
+    region = facial_region_map.get(morph, "unknown")
+    morph_mistakes = mistakes[mistakes["MouthMorph"] == morph]
+    mistake_count = len(morph_mistakes)
+    percent = mistake_count / total_preds_all * 100
+
+    print(f"  • '{morph}' ({region}): {mistake_count} / {total_preds_all} predictions ({percent:.1f}%)")
