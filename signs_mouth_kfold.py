@@ -445,6 +445,9 @@ def save_cm_figure(true_label, predict_label, best_save_path, acc, lst):
     plt.ylabel("True Label")
     plt.title(f"Confusion Matrix - Best Accuracy: {acc:.2f}%")
     
+    # Ensure the directory exists
+    os.makedirs(os.path.dirname(best_save_path), exist_ok=True)
+    
     # Save with high quality
     plt.savefig(best_save_path + "confusion_matrix.png", dpi=300, bbox_inches="tight")
     plt.close()
@@ -631,7 +634,14 @@ for current_fold in range(num_folds):
     # Initialize tracking variables
     best_val_acc = 0.0
     fold_dir = os.path.join(best_save_path, f"fold_{current_fold+1}")
-    fold_checkpoint_path = os.path.join(best_save_path, f"fold_{current_fold+1}_best_checkpoint.pth")
+    # Create fold directory if it doesn't exist
+    os.makedirs(fold_dir, exist_ok=True)
+    
+    # Define paths for all fold-specific files
+    fold_checkpoint_path = os.path.join(fold_dir, "best_checkpoint.pth")
+    fold_confusion_matrix_path = os.path.join(fold_dir, "confusion_matrix.png")
+    fold_results_path = os.path.join(fold_dir, "results.csv")
+    
     best_predictions = None
     best_true_labels = None
     best_filenames = None # Initialize best_filenames
@@ -716,7 +726,7 @@ for current_fold in range(num_folds):
                              filename=fold_checkpoint_path)
                 # Save fold-specific confusion matrix
                 save_cm_figure(true_labels, predictions, 
-                             os.path.join(fold_dir, f"confusion_matrix.png"),
+                             fold_confusion_matrix_path,
                              best_val_acc, lst)
                 
                 # Save fold-specific test results with all test cases
@@ -731,7 +741,15 @@ for current_fold in range(num_folds):
                         'Fold': f'Fold_{current_fold + 1}'
                     })
                 results_df = pd.DataFrame(test_results)
-                results_df.to_csv(os.path.join(fold_dir, f"results.csv"), index=False)
+                results_df.to_csv(fold_results_path, index=False)
+                
+                # Store best results for this fold
+                fold_results[current_fold] = {
+                    'best_accuracy': best_val_acc,
+                    'predictions': predictions,
+                    'true_labels': true_labels,
+                    'filenames': filenames
+                }
 
             
             print_and_log(f"Epoch [{epoch+1}/{num_epochs}], Loss: {running_loss/len(train_loader):.4f}, "
