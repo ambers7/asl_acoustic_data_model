@@ -471,8 +471,8 @@ def main():
     # for fold_idx, (train_data, test_data) in enumerate(folds[:5]):  # Only process first 5 folds
     #     print(f"\nProcessing fold {fold_idx + 1}/5")  # Updated to show 5 instead of 6
     for fold_idx, (train_data, test_data) in enumerate(folds):
-        if fold_idx != 5:
-            continue  # Skip all but the 6th fold (index 5)    
+        # if fold_idx != 5:
+        #     continue  # Skip all but the 6th fold (index 5)    
         # Create test loader
         test_dataset = CNNDataset(test_data, is_train=False)
         test_loader = DataLoader(
