@@ -14,6 +14,14 @@ import wn
 import torch
 from transformers import pipeline
 
+# import nltk
+nltk.download('wordnet')
+nltk.download('sentiwordnet')
+nltk.download('omw-1.4')
+wn.download('oewn:2024')
+
+
+
 # Map requested features to XML label names
 feature_map = {
     'negative': 'negative',
@@ -22,6 +30,13 @@ feature_map = {
     'topic_focus': 'topic/focus',
     'conditional_when': 'conditional/when',
     'role_shift': 'role shift',
+    'rhetorical_question': 'rhq',
+    'topic_focus': 'topic/focus',
+    'conditional_when': 'cond/when',
+    'relative_clause': 'rel. clause',
+    'subject_agreement': 'subj agr',
+    'object_agreement': 'obj agr',
+    'adverbial': 'adv',
     'head_pos_tilt_fr_bk': 'head pos: tilt fr/bk',
     'head_pos_turn': 'head pos: turn',
     'head_pose_tilt_side': 'head pos: tilt side',
@@ -87,7 +102,7 @@ class EmotionAnalyzer:
     def __init__(self):
         # Load NRC Emotion Lexicon, create dictionary of emotions to words
         self.emotion_lexicon = defaultdict(set)
-        with open('NRC-Emotion-Lexicon-Wordlevel-v0.92.txt', 'r', encoding='utf-8') as f:
+        with open('parsing/NRC-Emotion-Lexicon-Wordlevel-v0.92.txt', 'r', encoding='utf-8') as f:
             for line in f:
                 word, emotion, score = line.strip().split('\t')
                 if int(score) == 1:
@@ -293,14 +308,14 @@ def get_transformer_emotions(text):
 
 
 # Get all XML files in the xml_files directory
-xml_files = glob.glob('xml_files/*.xml')
+xml_files = glob.glob('parsing/xml_files/*.xml')
 
 if not xml_files:
     print("No XML files found in xml_files/ directory.")
     exit()
 
-csv_file = 'xml_csvs/emotion_asl.csv'
-word_count_file = 'xml_csvs/english_word_counts.csv'
+csv_file = 'parsing/xml_csvs/emotion_asl.csv'
+word_count_file = 'parsing/xml_csvs/english_word_counts.csv'
 
 # Initialize counters
 word_counter = Counter()  # for English words
@@ -437,143 +452,143 @@ with open(csv_file, 'w', newline='', encoding='utf-8') as f:
 
 print(f"CSV file '{csv_file}' created.")
 
-# Create word count CSVs
-print(f"Creating word count CSVs...")
+# # Create word count CSVs
+# print(f"Creating word count CSVs...")
 
 # English word counts
-word_counts = word_counter.most_common()
-with open(word_count_file, 'w', newline='', encoding='utf-8') as f:
-    writer = csv.writer(f)
-    writer.writerow(['word', 'count'])
-    for word, count in word_counts:
-        writer.writerow([word, count])
+# word_counts = word_counter.most_common()
+# with open(word_count_file, 'w', newline='', encoding='utf-8') as f:
+#     writer = csv.writer(f)
+#     writer.writerow(['word', 'count'])
+#     for word, count in word_counts:
+#         writer.writerow([word, count])
 
 # ASL gloss word counts
-asl_count_file = 'xml_csvs/asl_gloss_word_counts.csv'
-asl_counts = asl_counter.most_common()
-with open(asl_count_file, 'w', newline='', encoding='utf-8') as f:
-    writer = csv.writer(f)
-    writer.writerow(['asl_gloss', 'count'])
-    for word, count in asl_counts:
-        writer.writerow([word, count])
+# asl_count_file = 'xml_csvs/asl_gloss_word_counts.csv'
+# asl_counts = asl_counter.most_common()
+# with open(asl_count_file, 'w', newline='', encoding='utf-8') as f:
+#     writer = csv.writer(f)
+#     writer.writerow(['asl_gloss', 'count'])
+#     for word, count in asl_counts:
+#         writer.writerow([word, count])
 
 # Face feature word counts
-for feature, counter in face_counters.items():
-    feature_file = f'xml_csvs/{feature}_word_counts.csv'
-    feature_counts = counter.most_common()
-    with open(feature_file, 'w', newline='', encoding='utf-8') as f:
-        writer = csv.writer(f)
-        writer.writerow(['word', 'count'])
-        for word, count in feature_counts:
-            writer.writerow([word, count])
+# for feature, counter in face_counters.items():
+#     feature_file = f'xml_csvs/{feature}_word_counts.csv'
+#     feature_counts = counter.most_common()
+#     with open(feature_file, 'w', newline='', encoding='utf-8') as f:
+#         writer = csv.writer(f)
+#         writer.writerow(['word', 'count'])
+#         for word, count in feature_counts:
+#             writer.writerow([word, count])
 
 # Face feature word counts (combined)
-face_file = 'xml_csvs/face_word_counts.csv'
-face_counts = face_counter.most_common()
-with open(face_file, 'w', newline='', encoding='utf-8') as f:
-    writer = csv.writer(f)
-    writer.writerow(['word', 'count'])
-    for word, count in face_counts:
-        writer.writerow([word, count])
+# face_file = 'xml_csvs/face_word_counts.csv'
+# face_counts = face_counter.most_common()
+# with open(face_file, 'w', newline='', encoding='utf-8') as f:
+#     writer = csv.writer(f)
+#     writer.writerow(['word', 'count'])
+#     for word, count in face_counts:
+#         writer.writerow([word, count])
 
 # Head feature word counts (combined)
-head_file = 'xml_csvs/head_word_counts.csv'
-head_counts = head_counter.most_common()
-with open(head_file, 'w', newline='', encoding='utf-8') as f:
-    writer = csv.writer(f)
-    writer.writerow(['word', 'count'])
-    for word, count in head_counts:
-        writer.writerow([word, count])
+# head_file = 'xml_csvs/head_word_counts.csv'
+# head_counts = head_counter.most_common()
+# with open(head_file, 'w', newline='', encoding='utf-8') as f:
+#     writer = csv.writer(f)
+#     writer.writerow(['word', 'count'])
+#     for word, count in head_counts:
+#         writer.writerow([word, count])
 
-print(f"Head word count CSV '{head_file}' created.")
-print(f"Total unique head words: {len(head_counts)}")
-print(f"Total head word occurrences: {sum(count for _, count in head_counts)}")
+# print(f"Head word count CSV '{head_file}' created.")
+# print(f"Total unique head words: {len(head_counts)}")
+# print(f"Total head word occurrences: {sum(count for _, count in head_counts)}")
 
-print("\nTop 10 most frequent English words:")
-for rank, (word, count) in enumerate(word_counts[:10], 1):
-    print(f"  {rank}. {word}: {count}") 
+# print("\nTop 10 most frequent English words:")
+# for rank, (word, count) in enumerate(word_counts[:10], 1):
+#     print(f"  {rank}. {word}: {count}") 
 
 
-# Process all XML files again for eyebrow-gloss analysis
-for xml_file in xml_files:
-    print(f"Processing {xml_file} for eyebrow analysis...")
-    try:
-        tree = ET.parse(xml_file)
-        root = tree.getroot()
+# # Process all XML files again for eyebrow-gloss analysis
+# for xml_file in xml_files:
+#     print(f"Processing {xml_file} for eyebrow analysis...")
+#     try:
+#         tree = ET.parse(xml_file)
+#         root = tree.getroot()
 
-        for utterance in root.findall('.//UTTERANCE'):
-            # Get all manual signs with their frame ranges
-            manuals = utterance.find('MANUALS')
-            if manuals is None:
-                continue
+#         for utterance in root.findall('.//UTTERANCE'):
+#             # Get all manual signs with their frame ranges
+#             manuals = utterance.find('MANUALS')
+#             if manuals is None:
+#                 continue
 
-            # Get all signs and their frame ranges
-            signs = []
-            for sign in manuals.findall('SIGN'):
-                dom_hand = sign.find('DOMINANT_HAND')
-                if dom_hand is not None and sign.find('LABEL') is not None:
-                    label = sign.find('LABEL').text.strip("'")
-                    # Clean the label
-                    label = re.sub(r'[#+"]', '', label)
-                    label = re.sub(r'\(1h\)', '', label)
-                    label = re.sub(r'\(2h\)', '', label)
-                    label = label.strip()
+#             # Get all signs and their frame ranges
+#             signs = []
+#             for sign in manuals.findall('SIGN'):
+#                 dom_hand = sign.find('DOMINANT_HAND')
+#                 if dom_hand is not None and sign.find('LABEL') is not None:
+#                     label = sign.find('LABEL').text.strip("'")
+#                     # Clean the label
+#                     label = re.sub(r'[#+"]', '', label)
+#                     label = re.sub(r'\(1h\)', '', label)
+#                     label = re.sub(r'\(2h\)', '', label)
+#                     label = label.strip()
                     
-                    if label:
-                        start_frame = int(dom_hand.get('START_FRAME', 0))
-                        end_frame = int(dom_hand.get('END_FRAME', 0))
-                        signs.append((label, start_frame, end_frame))
-                        # Increment the total count for this gloss
-                        gloss_counts[label]['count'] += 1
-                        # Initialize eyebrow counts if not already done
-                        for pos in eyebrow_positions:
-                            if pos not in gloss_counts[label]:
-                                gloss_counts[label][pos] = 0
+#                     if label:
+#                         start_frame = int(dom_hand.get('START_FRAME', 0))
+#                         end_frame = int(dom_hand.get('END_FRAME', 0))
+#                         signs.append((label, start_frame, end_frame))
+#                         # Increment the total count for this gloss
+#                         gloss_counts[label]['count'] += 1
+#                         # Initialize eyebrow counts if not already done
+#                         for pos in eyebrow_positions:
+#                             if pos not in gloss_counts[label]:
+#                                 gloss_counts[label][pos] = 0
 
-            # Get all eyebrow movements
-            nonmanuals = utterance.find('NON_MANUALS')
-            if nonmanuals is None:
-                continue
+#             # Get all eyebrow movements
+#             nonmanuals = utterance.find('NON_MANUALS')
+#             if nonmanuals is None:
+#                 continue
 
-            # Check each eyebrow movement
-            for nm in nonmanuals.findall('NON_MANUAL'):
-                label_elem = nm.find('LABEL')
-                value_elem = nm.find('VALUE')
+#             # Check each eyebrow movement
+#             for nm in nonmanuals.findall('NON_MANUAL'):
+#                 label_elem = nm.find('LABEL')
+#                 value_elem = nm.find('VALUE')
                 
-                if (label_elem is not None and value_elem is not None and 
-                    label_elem.text and value_elem.text and
-                    label_elem.text.strip("'") == 'eye brows'):
+#                 if (label_elem is not None and value_elem is not None and 
+#                     label_elem.text and value_elem.text and
+#                     label_elem.text.strip("'") == 'eye brows'):
                     
-                    eyebrow_value = value_elem.text.strip("'")
-                    if eyebrow_value in eyebrow_positions:
-                        start_frame = int(nm.get('START_FRAME', 0))
-                        end_frame = int(nm.get('END_FRAME', 0))
+#                     eyebrow_value = value_elem.text.strip("'")
+#                     if eyebrow_value in eyebrow_positions:
+#                         start_frame = int(nm.get('START_FRAME', 0))
+#                         end_frame = int(nm.get('END_FRAME', 0))
                         
-                        # Check which signs overlap with this eyebrow movement
-                        for gloss, sign_start, sign_end in signs:
-                            if frames_overlap(start_frame, end_frame, sign_start, sign_end):
-                                gloss_counts[gloss][eyebrow_value] += 1
+#                         # Check which signs overlap with this eyebrow movement
+#                         for gloss, sign_start, sign_end in signs:
+#                             if frames_overlap(start_frame, end_frame, sign_start, sign_end):
+#                                 gloss_counts[gloss][eyebrow_value] += 1
 
-    except Exception as e:
-        print(f"Error processing {xml_file} for eyebrow analysis: {e}")
-        continue
+#     except Exception as e:
+#         print(f"Error processing {xml_file} for eyebrow analysis: {e}")
+#         continue
 
-# Write eyebrow-gloss results to CSV
-output_file = 'xml_csvs/gloss_eyebrow_counts.csv'
-with open(output_file, 'w', newline='', encoding='utf-8') as f:
-    writer = csv.writer(f)
-    # Write header
-    header = ['asl_gloss', 'count'] + eyebrow_positions
-    writer.writerow(header)
+# # Write eyebrow-gloss results to CSV
+# output_file = 'xml_csvs/gloss_eyebrow_counts.csv'
+# with open(output_file, 'w', newline='', encoding='utf-8') as f:
+#     writer = csv.writer(f)
+#     # Write header
+#     header = ['asl_gloss', 'count'] + eyebrow_positions
+#     writer.writerow(header)
     
-    # Sort glosses by count in descending order
-    sorted_glosses = sorted(gloss_counts.keys(), key=lambda x: gloss_counts[x]['count'], reverse=True)
+#     # Sort glosses by count in descending order
+#     sorted_glosses = sorted(gloss_counts.keys(), key=lambda x: gloss_counts[x]['count'], reverse=True)
     
-    # Write data for each gloss
-    for gloss in sorted_glosses:
-        row = [gloss, gloss_counts[gloss]['count']]
-        row.extend(gloss_counts[gloss].get(pos, 0) for pos in eyebrow_positions)
-        writer.writerow(row)
+#     # Write data for each gloss
+#     for gloss in sorted_glosses:
+#         row = [gloss, gloss_counts[gloss]['count']]
+#         row.extend(gloss_counts[gloss].get(pos, 0) for pos in eyebrow_positions)
+#         writer.writerow(row)
 
-print(f"\nCreated eyebrow-gloss co-occurrence CSV file: {output_file}")
-print(f"Total unique glosses analyzed: {len(gloss_counts)}")
+# print(f"\nCreated eyebrow-gloss co-occurrence CSV file: {output_file}")
+# print(f"Total unique glosses analyzed: {len(gloss_counts)}")
