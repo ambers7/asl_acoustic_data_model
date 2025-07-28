@@ -4,8 +4,9 @@ from collections import defaultdict
 # Load CSV
 # df = pd.read_csv("/home/as4288/asl_acoustic_data_model/experiments/data/6foldsign_mouth_combos_poi_300_360_th_50ch4_fusion_withcsvs/reloading/test_results_combined_full.csv")
 
-df = pd.read_csv("/home/as4288/asl_acoustic_data_model/experiments/data/sign_facial_mouth_combos_poi_300_360_th_50ch4_3fold_mouth/fold_2/results.csv")
-
+# df = pd.read_csv("/home/as4288/asl_acoustic_data_model/experiments/data/sign_facial_mouth_combos_poi_300_360_th_50ch4_3fold_mouth/fold_2/results.csv")
+# df = pd.read_csv("/home/as4288/asl_acoustic_data_model/experiments/data/sign_mouth_combos_poi_300_360_th_50ch4_fusion_mouth4sesh/test_results.csv")
+df = pd.read_csv("/home/as4288/asl_acoustic_data_model/experiments/data/sign_mouth_combos_poi_300_360_th_50ch4_fusion_mouth4sesh/combined_results.csv")
 # ASL sign locations
 asl_sign_locations = {
     "black": "upper face", "summer": "upper face", "dontmind": "lower face", "dontcare": "lower face", "dry": "lower face",
@@ -21,17 +22,21 @@ asl_sign_locations = {
     "carry": "body", "sign": "body", "drive": "body", "bicycle": "body", "study": "body"
 }
 # Extract full sign (e.g., "girl(mm)") from file name
-df["Sign"] = df["File"].str.extract(r'acoustic_diff_\d+_(.+)\.npy')
+# df["Sign"] = df["File"].str.extract(r'acoustic_diff_\d+_(.+)\.npy')
 
 # Extract base ASL word (e.g., "girl")
-df["BaseWord"] = df["Sign"].str.extract(r'^([^\(]+)')
+# df["BaseWord"] = df["Sign"].str.extract(r'^([^\(]+)')
 
-# Extract mouth morpheme (e.g., "mm")
+# # Extract mouth morpheme (e.g., "mm")
+# df["MouthMorph"] = df["Sign"].str.extract(r'\((.*?)\)')
+
+df["BaseWord"] = df["Sign"].str.extract(r'^([^\(]+)')
 df["MouthMorph"] = df["Sign"].str.extract(r'\((.*?)\)')
 
 
+
 # Rename for consistency
-df.rename(columns={"True Label": "Truth", "Predicted Label": "Predicted"}, inplace=True)
+# df.rename(columns={"True Label": "Truth", "Predicted Label": "Predicted"}, inplace=True)
 
 # Compute BaseWord + Morpheme combos columns
 df['BaseWord_MouthMorph'] = df['BaseWord'] + ' (' + df['MouthMorph'] + ')'
@@ -353,3 +358,44 @@ for morph in sorted(mistakes["MouthMorph"].dropna().unique()):
     percent = mistake_count / total_preds_all * 100
 
     print(f"  • '{morph}' ({region}): {mistake_count} / {total_preds_all} predictions ({percent:.1f}%)")
+print("\n🧠 Overall Mistake Distribution by Facial Expression (normalized by total predictions for that expression):")
+
+# Count total predictions per facial expression
+total_preds_by_morph = df["MouthMorph"].value_counts()
+
+# Count total mistakes per facial expression
+mistakes_by_morph = mistakes["MouthMorph"].value_counts()
+
+# Print results
+for morph in sorted(total_preds_by_morph.index):
+    total_preds = total_preds_by_morph[morph]
+    mistakes_count = mistakes_by_morph.get(morph, 0)
+    percent = (mistakes_count / total_preds) * 100
+    print(f"  • '{morph}': {mistakes_count} / {total_preds} ({percent:.1f}%)")
+
+print("\n🧠 Most Frequent Confusions *Between* Facial Expressions (based on mistakes):\n")
+
+# Filter only where morph != predicted (and both are not null)
+confused_morphs = mistakes[
+    (mistakes["MouthMorph"].notna()) &
+    (mistakes["Predicted"].notna()) &
+    (mistakes["MouthMorph"] != mistakes["Predicted"])
+]
+
+print(f"🔍 Number of mistaken rows with different morphs: {len(confused_morphs)}\n")
+
+# Count how often each morph was mistaken for another
+confusion_summary = (
+    confused_morphs.groupby(["MouthMorph", "Predicted"])
+    .size()
+    .reset_index(name="Count")
+    .sort_values(["MouthMorph", "Count"], ascending=[True, False])
+)
+
+# Show top 5 confusions per morph
+for morph in sorted(confusion_summary["MouthMorph"].unique()):
+    top_mistakes = confusion_summary[confusion_summary["MouthMorph"] == morph].head(5)
+    print(f"😶 '{morph}' was most often mistaken for:")
+    for _, row in top_mistakes.iterrows():
+        print(f"    ↳ {row['Predicted']}: {row['Count']} times")
+    print()
