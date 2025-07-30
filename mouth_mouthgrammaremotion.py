@@ -459,7 +459,7 @@ def get_category_stats(data):
 
 # Define the folds based on sessions
 folds = [
-    {'test': ['0101'], 'train': ['0201', '0301']},
+    {'test': ['0601'], 'train': ['0101', '0201', '0301', '0401', '0501', '0701', '0801', '0901', '1001']}
     # {'test': ['0201'], 'train': ['0101', '0301']},
     # {'test': ['0301'], 'train': ['0101', '0201']}
 ]
@@ -505,20 +505,21 @@ for current_fold in range(num_folds):
     # Load training data
     train_data = []
     for session in folds[current_fold]['train']:
-        data_pairs, _ = read_from_folder(session, os.path.join(args.dataset_path, 'dataset/session_'))
+        data_pairs, _ = read_from_folder(session, os.path.join(args.dataset_path, 'dataset/'))
         train_data.extend(data_pairs)
     
     # Load test data
     test_data = []
     for session in folds[current_fold]['test']:
-        data_pairs, _ = read_from_folder(session, os.path.join(args.dataset_path, 'dataset/session_'))
+        data_pairs, _ = read_from_folder(session, os.path.join(args.dataset_path, 'dataset/'))
         test_data.extend(data_pairs)
     
     # Create data loaders
     data_splitter = DataSplitter(train_data, test_data, batch_size, 0)
     train_loader = data_splitter.train_loader
     test_loader = data_splitter.test_loader
-    
+    print_and_log(f"target height: {target_height}")\
+
     # Initialize model for this fold
     model = models.resnet18(num_classes=class_num)
     model.conv1 = nn.Conv2d(input_channel, 64, kernel_size=3, stride=1, padding=1, bias=False)

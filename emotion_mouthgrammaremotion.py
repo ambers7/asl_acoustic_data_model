@@ -22,7 +22,7 @@ import torch.optim as optim
 import torchvision.models as models
 
 # Define our categories (only grammar and mouth morphemes)
-lst = ["none", "other",
+lst = ["other",
     "angry","sad","happy","surprise","terrified","disgust"]
 # Create label mappings
 label_dic = {value: index for index, value in enumerate(lst)}
@@ -114,8 +114,8 @@ print_and_log("="*50)
 print_and_log("Model Configuration:")
 print_and_log(f"Number of classes: {class_num}")
 print_and_log("\nClass categories:")
-print_and_log("Grammar (1-3): " + ", ".join(lst[1:4]))
-print_and_log("Mouth morphemes (4-10): " + ", ".join(lst[4:]))
+# print_and_log("Grammar (1-3): " + ", ".join(lst[1:4]))
+# print_and_log("Mouth morphemes (4-10): " + ", ".join(lst[4:]))
 print_and_log("="*50)
 
 def save_checkpoint(model, optimizer, epoch, best_acc=0.0, filename=best_save_path + "best_checkpoint.pth"):
@@ -354,7 +354,7 @@ def read_from_folder(session_num, data_path, is_train=False):
             print_and_log(f"Mapped unknown label '{base_name}' to 'other'")
 
             # print_and_log(f"Warning: Skipping unknown label '{truth}' from file {file}")
-            continue
+            # continue
 
         # Load imu
         try:
@@ -393,18 +393,18 @@ def read_from_folder(session_num, data_path, is_train=False):
     print_and_log("-" * 40)
     
     # Print grammar signs
-    print_and_log("Grammar signs:")
-    for label in lst[1:4]:  # raise, furrow, shake
-        print_and_log(f"  {label}: {category_counts[label]}")
+    # print_and_log("Grammar signs:")
+    # for label in lst[1:4]:  # raise, furrow, shake
+    #     print_and_log(f"  {label}: {category_counts[label]}")
     
-    # Print mouth morphemes
-    print_and_log("\nMouth morphemes:")
-    for label in lst[4:]:  # puff, oo, mm, cha, th, cs
-        print_and_log(f"  {label}: {category_counts[label]}")
+    # # Print mouth morphemes
+    # print_and_log("\nMouth morphemes:")
+    # for label in lst[4:]:  # puff, oo, mm, cha, th, cs
+    #     print_and_log(f"  {label}: {category_counts[label]}")
     
-    # Print none category
-    print_and_log("\nNone category:")
-    print_and_log(f"  none: {category_counts['none']}")
+    # # Print none category
+    # print_and_log("\nNone category:")
+    # print_and_log(f"  none: {category_counts['none']}")
     
     print_and_log("-" * 40)
     if n_bad:
@@ -462,7 +462,9 @@ def get_category_stats(data):
 
 # Define the folds based on sessions
 folds = [
-    {'test': ['0101'], 'train': ['0201', '0301']},
+    {'test': ['0601'], 'train': ['0101', '0201', '0301', '0401', '0501', '0701', '0801', '0901', '1001']}
+
+    # {'test': ['0101'], 'train': ['0201', '0301']},
     # {'test': ['0201'], 'train': ['0101', '0301']},
     # {'test': ['0301'], 'train': ['0101', '0201']}
 ]
@@ -508,13 +510,13 @@ for current_fold in range(num_folds):
     # Load training data
     train_data = []
     for session in folds[current_fold]['train']:
-        data_pairs, _ = read_from_folder(session, os.path.join(args.dataset_path, 'dataset/session_'))
+        data_pairs, _ = read_from_folder(session, os.path.join(args.dataset_path, 'dataset/'))
         train_data.extend(data_pairs)
     
     # Load test data
     test_data = []
     for session in folds[current_fold]['test']:
-        data_pairs, _ = read_from_folder(session, os.path.join(args.dataset_path, 'dataset/session_'))
+        data_pairs, _ = read_from_folder(session, os.path.join(args.dataset_path, 'dataset/'))
         test_data.extend(data_pairs)
     
     # Create data loaders
