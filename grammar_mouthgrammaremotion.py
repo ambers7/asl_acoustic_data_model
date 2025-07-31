@@ -24,6 +24,8 @@ import torchvision.models as models
 # Define our categories (only grammar and mouth morphemes)
 lst = ["other",
        "raise", "furrow", "shake"]
+emotions = ["angry","sad","happy","surprise","terrified","disgust"]
+
 # Create label mappings
 label_dic = {value: index for index, value in enumerate(lst)}
 label_dic_reverse = {index: value for index, value in enumerate(lst)}
@@ -344,6 +346,11 @@ def read_from_folder(session_num, data_path, is_train=False):
 
         if not truth:
             print_and_log(f"Warning: No label found in parentheses for file {file}")
+            continue
+
+        # exclude emotions
+        if truth in emotions:
+            print_and_log(f"Skipping emotion: {truth}")
             continue
             
         # print_and_log(f"Found label: {truth}")  # Debug print

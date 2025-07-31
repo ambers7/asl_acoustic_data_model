@@ -21,12 +21,14 @@ import torch.nn as nn
 import torch.optim as optim
 import torchvision.models as models
 
-# Define our categories (only grammar and mouth morphemes)
-lst = ["none", 
-       "aah","pah","puff", "oo", "mm", "cha", "th", "cs"]  # Mouth morphemes (5)
 
+grammar = ["raise", "furrow", "shake"]
+mouth_morphemes = ["aah","pah","puff", "oo", "mm", "cha", "th", "cs"]
 emotions = ["angry","sad","happy","surprise","terrified","disgust"]
 
+lst = ["raise", "furrow", "shake",
+       "aah","pah","puff", "oo", "mm", "cha", "th", "cs",
+       "angry","sad","happy","surprise","terrified","disgust"]
 # Create label mappings
 label_dic = {value: index for index, value in enumerate(lst)}
 label_dic_reverse = {index: value for index, value in enumerate(lst)}
@@ -116,9 +118,9 @@ print_and_log("="*50)
 print_and_log("="*50)
 print_and_log("Model Configuration:")
 print_and_log(f"Number of classes: {class_num}")
-print_and_log("\nClass categories:")
-print_and_log("Grammar (1-3): " + ", ".join(lst[1:4]))
-print_and_log("Mouth morphemes (4-10): " + ", ".join(lst[4:]))
+# print_and_log("\nClass categories:")
+# print_and_log("Grammar (1-3): " + ", ".join(lst[1:4]))
+# print_and_log("Mouth morphemes (4-10): " + ", ".join(lst[4:]))
 print_and_log("="*50)
 
 def save_checkpoint(model, optimizer, epoch, best_acc=0.0, filename=best_save_path + "best_checkpoint.pth"):
@@ -341,27 +343,41 @@ def read_from_folder(session_num, data_path, is_train=False):
         file = file_echo_diff_list[i]
         # print_and_log(f"Processing file: {file}")  # Debug print
         
+        
         base_name = file.split('.')[0].split('_')[-1]
-        before_parens = re.sub(r'\(.*\)', '', base_name).lower()  # Remove any (cs), (oo), etc.
-
-        # exclude emotions 
-        if before_parens in emotions:
-            print_and_log(f"Skipping emotion: {before_parens}")
-            continue
-
-
-        # Extract label from filename (e.g., 'acoustic_diff_9_dorm(cs).npy' or 'acoustic_diff_9_dorm(none).npy')
-        match = re.search(r'\((.*?)\)', file)
-        if not match:
+        
+        # Extract both the main label and what's in parentheses
+        main_label = re.sub(r'\(.*\)', '', base_name).lower()  # e.g., "happy" from "happy(none)"
+        in_parens = re.search(r'\((.*?)\)', base_name)  # e.g., "none" from "happy(none)"
+        
+        if not in_parens:
             print_and_log(f"Warning: No label found in parentheses for file {file}")
             continue
             
-        truth = match.group(1).lower()  # Get text between parentheses and convert to lowercase
-        # print_and_log(f"Found label: {truth}")  # Debug print
+        in_parens = in_parens.group(1).lower()
+        
 
-        # Skip if the label is not in our defined categories
+        # Process based on the pattern
+        if main_label == "none" and in_parens in mouth_morphemes:
+            # SKIPPING EMOTIONS 
+            # Case: none(mouth_morpheme)
+            truth = in_parens
+        elif in_parens == "none":
+            if main_label in grammar: # or main_label in emotions:
+                # Case: emotion(none) or grammar(none)
+                truth = main_label
+            else:
+                print_and_log(f"Skipping emotion: {main_label}")
+                print_and_log(f"Warning: Invalid main label '{main_label}' with none in parentheses")
+                continue
+        else:
+            # Skip combinations of grammar/emotion with mouth morphemes
+            print_and_log(f"Skipping combination: {base_name}")
+            continue
+
+        # Verify the extracted label is valid
         if truth not in lst:
-            print_and_log(f"Warning: Skipping unknown label '{truth}' from file {file}")
+            print_and_log(f"Warning: Invalid label '{truth}' extracted from {base_name}")
             continue
 
         # Load imu
@@ -401,18 +417,18 @@ def read_from_folder(session_num, data_path, is_train=False):
     print_and_log("-" * 40)
     
     # Print grammar signs
-    print_and_log("Grammar signs:")
-    for label in lst[1:4]:  # raise, furrow, shake
-        print_and_log(f"  {label}: {category_counts[label]}")
+    # print_and_log("Grammar signs:")
+    # for label in lst[1:4]:  # raise, furrow, shake
+    #     print_and_log(f"  {label}: {category_counts[label]}")
     
-    # Print mouth morphemes
-    print_and_log("\nMouth morphemes:")
-    for label in lst[4:]:  # puff, oo, mm, cha, th, cs
-        print_and_log(f"  {label}: {category_counts[label]}")
+    # # Print mouth morphemes
+    # print_and_log("\nMouth morphemes:")
+    # for label in lst[4:]:  # puff, oo, mm, cha, th, cs
+    #     print_and_log(f"  {label}: {category_counts[label]}")
     
-    # Print none category
-    print_and_log("\nNone category:")
-    print_and_log(f"  none: {category_counts['none']}")
+    # # Print none category
+    # print_and_log("\nNone category:")
+    # print_and_log(f"  none: {category_counts['none']}")
     
     print_and_log("-" * 40)
     if n_bad:
@@ -470,9 +486,10 @@ def get_category_stats(data):
 
 # Define the folds based on sessions
 folds = [
-    {'test': ['0601'], 'train': ['0101', '0201', '0301', '0401', '0501', '0701', '0801', '0901', '1001']}
-    # {'test': ['0201'], 'train': ['0101', '0301']},
-    # {'test': ['0301'], 'train': ['0101', '0201']}
+    # {'test': ['0601'], 'train': ['0101', '0201', '0301', '0401', '0501', '0701', '0801', '0901', '1001']}
+    {'test': ['0301'], 'train': ['0101', '0201', '0401', '0501', '0601', '0701', '0801', '0901', '1001']},
+    {'test': ['0801'], 'train': ['0101', '0201', '0301', '0401', '0501', '0601', '0701', '0901', '1001']}
+
 ]
 
 num_folds = len(folds)
@@ -529,8 +546,7 @@ for current_fold in range(num_folds):
     data_splitter = DataSplitter(train_data, test_data, batch_size, 0)
     train_loader = data_splitter.train_loader
     test_loader = data_splitter.test_loader
-    print_and_log(f"target height: {target_height}")\
-
+    
     # Initialize model for this fold
     model = models.resnet18(num_classes=class_num)
     model.conv1 = nn.Conv2d(input_channel, 64, kernel_size=3, stride=1, padding=1, bias=False)
