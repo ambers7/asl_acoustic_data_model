@@ -342,15 +342,9 @@ def read_from_folder(session_num, data_path, is_train=False):
         # print_and_log(f"Processing file: {file}")  # Debug print
         
         base_name = file.split('.')[0].split('_')[-1]
-        before_parens = re.sub(r'\(.*\)', '', base_name).lower()  # Remove any (cs), (oo), etc.
-
-        # exclude emotions 
-        if before_parens in emotions:
-            print_and_log(f"Skipping emotion: {before_parens}")
-            continue
-
-
-        # Extract the mouth morpheme (what's inside parentheses)
+        before_parens = re.sub(r'\(.*\)', '', base_name).lower()  # Get the main gesture name
+        
+        # Extract content inside parentheses (the mouth morpheme)
         match = re.search(r'\((.*?)\)', file)
         if not match:
             print_and_log(f"Warning: No content in parentheses found for file {file}")
@@ -358,13 +352,28 @@ def read_from_folder(session_num, data_path, is_train=False):
             
         mouth_morpheme = match.group(1).lower()  # Get text between parentheses
 
-        # Skip if the mouth morpheme is not one we want to classify
-        if mouth_morpheme not in lst:
-            print_and_log(f"Warning: Skipping unknown mouth morpheme '{mouth_morpheme}' from file {file}")
+        # exclude emotions
+        if before_parens in emotions:
+            print_and_log(f"Skipping emotion: {before_parens}")
             continue
 
-        # Use the mouth morpheme as the truth label
-        truth = mouth_morpheme
+        if is_train:
+            # During training: only use files with "none" gesture and mouth morphemes
+            if before_parens != "none" or mouth_morpheme == "none":
+                continue
+            # Use the mouth morpheme as the truth label
+            truth = mouth_morpheme
+        else:
+            # During testing: only use files with grammar gestures and mouth morphemes
+            if before_parens == "none" or mouth_morpheme == "none":
+                continue
+            # Use the mouth morpheme as the truth label
+            truth = mouth_morpheme
+
+        # Skip if the mouth morpheme is not in our defined categories
+        if truth not in lst:
+            print_and_log(f"Warning: Skipping unknown mouth morpheme '{truth}' from file {file}")
+            continue
 
         # Load imu
         try:
@@ -471,14 +480,10 @@ def get_category_stats(data):
     return stats
 
 # Define the folds based on sessions
+# Define the folds - using all sessions but separating by category (none_morpheme vs grammar_morpheme)
+all_sessions = ['0101', '0201', '0301', '0401', '0501', '0601', '0701', '0801', '0901', '1001']
 folds = [
-    # {'test': ['0601'], 'train': ['0101', '0201', '0301', '0401', '0501', '0701', '0801', '0901', '1001']},
-    {'test': ['0301'], 'train': ['0101', '0201', '0401', '0501', '0601', '0701', '0801', '0901', '1001']},
-    {'test': ['0801'], 'train': ['0101', '0201', '0301', '0401', '0501', '0601', '0701', '0901', '1001']}
-
-
-    # {'test': ['0201'], 'train': ['0101', '0301']},
-    # {'test': ['0301'], 'train': ['0101', '0201']}
+    {'test': all_sessions, 'train': all_sessions}  # Use all sessions, separation happens in read_from_folder
 ]
 
 num_folds = len(folds)
@@ -519,13 +524,13 @@ for current_fold in range(num_folds):
     print_and_log(f"Test session: {folds[current_fold]['test'][0]}")
     print_and_log(f"Train sessions: {', '.join(folds[current_fold]['train'])}")
     
-    # Load training data - use none(mouth_morpheme)
+    # Load training data
     train_data = []
     for session in folds[current_fold]['train']:
         data_pairs, _ = read_from_folder(session, os.path.join(args.dataset_path, 'dataset/'), is_train=True)
         train_data.extend(data_pairs)
     
-    # Load test data - use grammar(mouth_morpheme)
+    # Load test data
     test_data = []
     for session in folds[current_fold]['test']:
         data_pairs, _ = read_from_folder(session, os.path.join(args.dataset_path, 'dataset/'), is_train=False)

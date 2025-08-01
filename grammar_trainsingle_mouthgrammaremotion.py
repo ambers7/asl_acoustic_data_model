@@ -21,10 +21,8 @@ import torch.nn as nn
 import torch.optim as optim
 import torchvision.models as models
 
-# Define our categories (only grammar and mouth morphemes)
-lst = ["none", 
-       "aah","pah","puff", "oo", "mm", "cha", "th", "cs"]  # Mouth morphemes (5)
-
+# Define our categories
+lst = ["raise", "furrow", "shake"]
 emotions = ["angry","sad","happy","surprise","terrified","disgust"]
 
 # Create label mappings
@@ -116,9 +114,9 @@ print_and_log("="*50)
 print_and_log("="*50)
 print_and_log("Model Configuration:")
 print_and_log(f"Number of classes: {class_num}")
-print_and_log("\nClass categories:")
-print_and_log("Grammar (1-3): " + ", ".join(lst[1:4]))
-print_and_log("Mouth morphemes (4-10): " + ", ".join(lst[4:]))
+# print_and_log("\nClass categories:")
+# print_and_log("Grammar (1-3): " + ", ".join(lst[1:4]))
+# print_and_log("Mouth morphemes (4-10): " + ", ".join(lst[4:]))
 print_and_log("="*50)
 
 def save_checkpoint(model, optimizer, epoch, best_acc=0.0, filename=best_save_path + "best_checkpoint.pth"):
@@ -318,7 +316,7 @@ def normalize_imu_data(upsampled_imu_data):
     normalized_imu_data = (upsampled_imu_data - means) / stds
     return normalized_imu_data, means, stds
 
-def read_from_folder(session_num, data_path, is_train=False):
+def read_from_folder(session_num, data_path, is_train=True):
     # Construct file path correctly using os.path.join
     file_path = os.path.join(data_path, f"session_{session_num}")
     file_echo_org = os.path.join(file_path, 'acoustic', 'non_diff')
@@ -339,18 +337,12 @@ def read_from_folder(session_num, data_path, is_train=False):
     
     for i in range(0, len(file_echo_diff_list)):
         file = file_echo_diff_list[i]
-        # print_and_log(f"Processing file: {file}")  # Debug print
         
         base_name = file.split('.')[0].split('_')[-1]
-        before_parens = re.sub(r'\(.*\)', '', base_name).lower()  # Remove any (cs), (oo), etc.
+        # Get the main gesture name (before parentheses)
+        gesture = re.sub(r'\(.*\)', '', base_name).lower()
 
-        # exclude emotions 
-        if before_parens in emotions:
-            print_and_log(f"Skipping emotion: {before_parens}")
-            continue
-
-
-        # Extract the mouth morpheme (what's inside parentheses)
+        # Extract content inside parentheses (the mouth morpheme)
         match = re.search(r'\((.*?)\)', file)
         if not match:
             print_and_log(f"Warning: No content in parentheses found for file {file}")
@@ -358,13 +350,26 @@ def read_from_folder(session_num, data_path, is_train=False):
             
         mouth_morpheme = match.group(1).lower()  # Get text between parentheses
 
-        # Skip if the mouth morpheme is not one we want to classify
-        if mouth_morpheme not in lst:
-            print_and_log(f"Warning: Skipping unknown mouth morpheme '{mouth_morpheme}' from file {file}")
+        # exclude emotions
+        if gesture in emotions:
+            print_and_log(f"Skipping emotion: {gesture}")
             continue
 
-        # Use the mouth morpheme as the truth label
-        truth = mouth_morpheme
+        # Skip if not a grammar gesture we want to classify
+        if gesture not in lst:
+            continue
+
+        if is_train:
+            # During training: only use files with (none)
+            if mouth_morpheme != "none":
+                continue
+        else:
+            # During testing: only use files with mouth morphemes (not none)
+            if mouth_morpheme == "none":
+                continue
+
+        # Use the grammar gesture as the truth label
+        truth = gesture
 
         # Load imu
         try:
@@ -403,18 +408,18 @@ def read_from_folder(session_num, data_path, is_train=False):
     print_and_log("-" * 40)
     
     # Print grammar signs
-    print_and_log("Grammar signs:")
-    for label in lst[1:4]:  # raise, furrow, shake
-        print_and_log(f"  {label}: {category_counts[label]}")
+    # print_and_log("Grammar signs:")
+    # for label in lst[1:4]:  # raise, furrow, shake
+    #     print_and_log(f"  {label}: {category_counts[label]}")
     
-    # Print mouth morphemes
-    print_and_log("\nMouth morphemes:")
-    for label in lst[4:]:  # puff, oo, mm, cha, th, cs
-        print_and_log(f"  {label}: {category_counts[label]}")
+    # # Print mouth morphemes
+    # print_and_log("\nMouth morphemes:")
+    # for label in lst[4:]:  # puff, oo, mm, cha, th, cs
+    #     print_and_log(f"  {label}: {category_counts[label]}")
     
-    # Print none category
-    print_and_log("\nNone category:")
-    print_and_log(f"  none: {category_counts['none']}")
+    # # Print none category
+    # print_and_log("\nNone category:")
+    # print_and_log(f"  none: {category_counts['none']}")
     
     print_and_log("-" * 40)
     if n_bad:
@@ -470,15 +475,10 @@ def get_category_stats(data):
             stats[f"Mouth - {label}"] += 1
     return stats
 
-# Define the folds based on sessions
+# Define the folds - using all sessions but separating by category (grammar_none vs grammar_morpheme)
+all_sessions = ['0101', '0201', '0301', '0401', '0501', '0601', '0701', '0801', '0901', '1001']
 folds = [
-    # {'test': ['0601'], 'train': ['0101', '0201', '0301', '0401', '0501', '0701', '0801', '0901', '1001']},
-    {'test': ['0301'], 'train': ['0101', '0201', '0401', '0501', '0601', '0701', '0801', '0901', '1001']},
-    {'test': ['0801'], 'train': ['0101', '0201', '0301', '0401', '0501', '0601', '0701', '0901', '1001']}
-
-
-    # {'test': ['0201'], 'train': ['0101', '0301']},
-    # {'test': ['0301'], 'train': ['0101', '0201']}
+    {'test': all_sessions, 'train': all_sessions}  # Use all sessions, separation happens in read_from_folder
 ]
 
 num_folds = len(folds)
@@ -519,13 +519,13 @@ for current_fold in range(num_folds):
     print_and_log(f"Test session: {folds[current_fold]['test'][0]}")
     print_and_log(f"Train sessions: {', '.join(folds[current_fold]['train'])}")
     
-    # Load training data - use none(mouth_morpheme)
+    # Load training data - use files with (none)
     train_data = []
     for session in folds[current_fold]['train']:
         data_pairs, _ = read_from_folder(session, os.path.join(args.dataset_path, 'dataset/'), is_train=True)
         train_data.extend(data_pairs)
     
-    # Load test data - use grammar(mouth_morpheme)
+    # Load test data - use files with mouth morphemes
     test_data = []
     for session in folds[current_fold]['test']:
         data_pairs, _ = read_from_folder(session, os.path.join(args.dataset_path, 'dataset/'), is_train=False)
@@ -535,8 +535,7 @@ for current_fold in range(num_folds):
     data_splitter = DataSplitter(train_data, test_data, batch_size, 0)
     train_loader = data_splitter.train_loader
     test_loader = data_splitter.test_loader
-    print_and_log(f"target height: {target_height}")\
-
+    
     # Initialize model for this fold
     model = models.resnet18(num_classes=class_num)
     model.conv1 = nn.Conv2d(input_channel, 64, kernel_size=3, stride=1, padding=1, bias=False)

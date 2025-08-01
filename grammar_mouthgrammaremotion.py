@@ -516,13 +516,13 @@ for current_fold in range(num_folds):
     # Load training data
     train_data = []
     for session in folds[current_fold]['train']:
-        data_pairs, _ = read_from_folder(session, os.path.join(args.dataset_path, 'dataset/'))
+        data_pairs, _ = read_from_folder(session, os.path.join(args.dataset_path, 'dataset/'), is_train=True)
         train_data.extend(data_pairs)
     
     # Load test data
     test_data = []
     for session in folds[current_fold]['test']:
-        data_pairs, _ = read_from_folder(session, os.path.join(args.dataset_path, 'dataset/'))
+        data_pairs, _ = read_from_folder(session, os.path.join(args.dataset_path, 'dataset/'), is_train=False)
         test_data.extend(data_pairs)
     
     # Create data loaders
