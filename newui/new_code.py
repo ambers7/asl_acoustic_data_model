@@ -75,7 +75,10 @@ def draw_phrase(canvas, parsed, x_start, y_start, row_height, font, font_scale, 
                 cv2.line(canvas, line_start, line_end, (0,0,225), thickness=2)
 
 def main():
-    phrase = "SHE(raise) fs-Marry(raise) ARRIVE(raise,pah) HOME(raise) LATE(raise) Mother MAYBE ANGRY(angry) SHE(raise)"
+    # phrase = "SHE(raise) fs-Marry(raise) ARRIVE(raise,pah) HOME(raise) LATE(raise) Mother MAYBE ANGRY(angry) SHE(raise)"
+    # phrase = "HE/SHE(raise) fs-John(raise,puff) LATE FAMILY(raise) DONTCARE"
+    phrase = "WHEN(furrow) HE/SHE(mm) fs-JAMES(raise) DRIVE(raise,happy), WHY(furrow,happy) HE LATE"
+
 
     canvas_width = 1200
     canvas_height = 200
