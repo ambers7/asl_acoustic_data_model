@@ -12,16 +12,8 @@ feature_map = {
     'face_cheeks': 'cheeks'
 }
 
-def split_into_sentences(text):
-    """Split text into sentences."""
-    if not text:
-        return []
-    # Split on common sentence endings
-    sentences = re.split(r'[.!?]+', text)
-    # Remove empty sentences and strip whitespace
-    return [s.strip() for s in sentences if s.strip()]
 
-def get_facial_expression_timing(nonmanuals, feature_label):
+def get_facial_expression_timing(nonmanuals, feature_label, utterance_start_frame):
     """Get facial expressions with their timing information."""
     expressions = []
     if nonmanuals is not None:
@@ -29,17 +21,29 @@ def get_facial_expression_timing(nonmanuals, feature_label):
             label_elem = nm.find('LABEL')
             value_elem = nm.find('VALUE')
             if (label_elem is not None and value_elem is not None and 
-                label_elem.text and value_elem.text and
-                label_elem.text.strip("'") == feature_label):
+                label_elem.text and value_elem.text):
                 
-                start_frame = int(nm.get('START_FRAME', 0))
-                end_frame = int(nm.get('END_FRAME', 0))
-                value = value_elem.text.strip("'")
-                expressions.append({
-                    'value': value,
-                    'start_frame': start_frame,
-                    'end_frame': end_frame
-                })
+                label_text = label_elem.text.strip("'")
+                # Check if the label matches our feature label
+                if label_text == feature_label:
+                    # Get absolute frame numbers
+                    start_attr = nm.get('START_FRAME')
+                    end_attr = nm.get('END_FRAME')
+                    print(f"Frame numbers - start: {start_attr}, end: {end_attr}")
+                    
+                    if start_attr is None or end_attr is None:
+                        print(f"Warning: Missing frame numbers for {value_elem.text}")
+                        continue
+                        
+                    start_frame = int(start_attr)
+                    end_frame = int(end_attr)
+                    
+                    value = value_elem.text.strip("'")
+                    expressions.append({
+                        'value': value,
+                        'start_frame': start_frame,
+                        'end_frame': end_frame
+                    })
     return expressions
 
 def format_expressions_with_timing(expressions):
@@ -56,7 +60,7 @@ if not xml_files:
     print("No XML files found in xml_files/ directory.")
     exit()
 
-csv_file = 'parsing/xml_csvs/facial_expressions_by_sentence.csv'
+csv_file = 'parsing/xml_csvs/facial_expressions.csv'
 
 with open(csv_file, 'w', newline='', encoding='utf-8') as f:
     writer = csv.writer(f)
@@ -66,21 +70,29 @@ with open(csv_file, 'w', newline='', encoding='utf-8') as f:
     
     row_count = 0
     for xml_file in xml_files:
-        print(f"Processing {xml_file}...")
+        print(f"\nProcessing {xml_file}...")
         try:
             tree = ET.parse(xml_file)
             root = tree.getroot()
 
             for utterance in root.findall('.//UTTERANCE'):
                 utterance_id = utterance.get('ID', '').strip("'")
+                start_attr = utterance.get('START_FRAME')
+                print(f"\nUtterance {utterance_id} - START_FRAME attribute: {start_attr}")
                 
-                # Get translation and split into sentences
+                if start_attr is None:
+                    print(f"Warning: Missing START_FRAME for utterance {utterance_id}")
+                    continue
+                    
+                utterance_start_frame = int(start_attr)
+                
+                # Get translation
                 translation_elem = utterance.find('TRANSLATION')
                 if translation_elem is None or translation_elem.text is None:
                     continue
                     
-                full_translation = translation_elem.text.strip("'")
-                sentences = split_into_sentences(full_translation)
+                translation = translation_elem.text.strip("'")
+                print(f"Translation: {translation}")
                 
                 # Get ASL gloss
                 labels = []
@@ -99,27 +111,30 @@ with open(csv_file, 'w', newline='', encoding='utf-8') as f:
                 
                 # Get facial expressions with timing
                 nonmanuals = utterance.find('NON_MANUALS')
-                eyebrows = get_facial_expression_timing(nonmanuals, 'eye brows')
-                mouth = get_facial_expression_timing(nonmanuals, 'mouth')
-                cheeks = get_facial_expression_timing(nonmanuals, 'cheeks')
+                print("\nProcessing facial expressions:")
+                print("Eyebrows:")
+                eyebrows = get_facial_expression_timing(nonmanuals, 'eye brows', utterance_start_frame)
+                print("\nMouth:")
+                mouth = get_facial_expression_timing(nonmanuals, 'mouth', utterance_start_frame)
+                print("\nCheeks:")
+                cheeks = get_facial_expression_timing(nonmanuals, 'cheeks', utterance_start_frame)
                 
-                # Create a row for each sentence
-                for sentence in sentences:
-                    row_count += 1
-                    row_data = [
-                        row_count,
-                        utterance_id,
-                        sentence,
-                        ';'.join(labels),
-                        len(labels),
-                        format_expressions_with_timing(eyebrows),
-                        format_expressions_with_timing(mouth),
-                        format_expressions_with_timing(cheeks)
-                    ]
-                    writer.writerow(row_data)
+                # Create a single row for the utterance
+                row_count += 1
+                row_data = [
+                    row_count,
+                    utterance_id,
+                    translation,
+                    ';'.join(labels),
+                    len(labels),
+                    format_expressions_with_timing(eyebrows),
+                    format_expressions_with_timing(mouth),
+                    format_expressions_with_timing(cheeks)
+                ]
+                writer.writerow(row_data)
 
         except Exception as e:
             print(f"Error processing {xml_file}: {e}")
             continue
 
-print(f"CSV file '{csv_file}' created with {row_count} sentences.")
+print(f"\nCSV file '{csv_file}' created with {row_count} sentences.")
